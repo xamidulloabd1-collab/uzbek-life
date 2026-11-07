@@ -12,6 +12,7 @@ npm run build:single   # dist-single/index.html — bitta fayl (≈6 MB)
 npm run typecheck
 ```
 Talab: Node 18+, WebGL 2 qo‘llaydigan brauzer (Chrome, Edge, Firefox, Safari 15+).
+Netlify’da build buyrug‘i va `dist/` publish papkasi `netlify.toml` orqali belgilanadi; unda build JavaScript modullari va Draco decoder skriptlari uchun MIME turi ham aniq o‘rnatilgan.
 
 ## Boshqaruv
 | Kompyuter | Telefon | Amal |
