@@ -1,0 +1,144 @@
+export interface Box {
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
+  h: number;
+}
+
+export interface Contact {
+  nx: number;
+  nz: number;
+  depth: number;
+}
+
+const CELL = 12;
+
+/**
+ * Lightweight 2.5D collision: buildings, walls, trunks and poles are
+ * axis-aligned boxes in a spatial hash. Rotated buildings are approximated by
+ * their bounding box, which suits the grid-aligned city.
+ */
+export class CollisionWorld {
+  boxes: Box[] = [];
+  private grid = new Map<number, number[]>();
+  private stamp: Uint32Array = new Uint32Array(0);
+  private tick = 1;
+
+  private key(cx: number, cz: number) {
+    return (cx + 4096) * 8192 + (cz + 4096);
+  }
+
+  /** returns the box id (use disable(id) to remove it, e.g. when a parked car drives away) */
+  add(minX: number, minZ: number, maxX: number, maxZ: number, h = 3): number {
+    const id = this.boxes.length;
+    this.boxes.push({ minX: Math.min(minX, maxX), maxX: Math.max(minX, maxX), minZ: Math.min(minZ, maxZ), maxZ: Math.max(minZ, maxZ), h });
+    const b = this.boxes[id];
+    for (let cx = Math.floor(b.minX / CELL); cx <= Math.floor(b.maxX / CELL); cx++) {
+      for (let cz = Math.floor(b.minZ / CELL); cz <= Math.floor(b.maxZ / CELL); cz++) {
+        const k = this.key(cx, cz);
+        let list = this.grid.get(k);
+        if (!list) this.grid.set(k, (list = []));
+        list.push(id);
+      }
+    }
+    return id;
+  }
+
+  disable(id: number) {
+    if (this.boxes[id]) this.boxes[id].h = -1;
+  }
+
+  /** centre-based helper */
+  addCentered(cx: number, cz: number, w: number, d: number, h = 3): number {
+    return this.add(cx - w / 2, cz - d / 2, cx + w / 2, cz + d / 2, h);
+  }
+
+  query(minX: number, minZ: number, maxX: number, maxZ: number, out: Box[] = []): Box[] {
+    out.length = 0;
+    if (this.stamp.length < this.boxes.length) this.stamp = new Uint32Array(this.boxes.length + 256);
+    this.tick++;
+    for (let cx = Math.floor(minX / CELL); cx <= Math.floor(maxX / CELL); cx++) {
+      for (let cz = Math.floor(minZ / CELL); cz <= Math.floor(maxZ / CELL); cz++) {
+        const list = this.grid.get(this.key(cx, cz));
+        if (!list) continue;
+        for (const id of list) {
+          if (this.stamp[id] === this.tick) continue;
+          this.stamp[id] = this.tick;
+          const b = this.boxes[id];
+          if (b.maxX < minX || b.minX > maxX || b.maxZ < minZ || b.minZ > maxZ) continue;
+          out.push(b);
+        }
+      }
+    }
+    return out;
+  }
+
+  private tmp: Box[] = [];
+
+  /** push a circle out of all boxes; returns the deepest contact (or null) */
+  resolveCircle(p: { x: number; z: number }, r: number, maxHeight = Infinity): Contact | null {
+    let deepest: Contact | null = null;
+    for (let iter = 0; iter < 2; iter++) {
+      const list = this.query(p.x - r, p.z - r, p.x + r, p.z + r, this.tmp);
+      for (const b of list) {
+        if (b.h < 0.05 || b.h > maxHeight + 100) continue;
+        const qx = Math.max(b.minX, Math.min(p.x, b.maxX));
+        const qz = Math.max(b.minZ, Math.min(p.z, b.maxZ));
+        let dx = p.x - qx;
+        let dz = p.z - qz;
+        let d = Math.hypot(dx, dz);
+        let depth: number;
+        if (d < 1e-6) {
+          // centre inside the box: push along the shallowest axis
+          const l = p.x - b.minX, rr = b.maxX - p.x, t = p.z - b.minZ, bb = b.maxZ - p.z;
+          const m = Math.min(l, rr, t, bb);
+          if (m === l) { dx = -1; dz = 0; } else if (m === rr) { dx = 1; dz = 0; } else if (m === t) { dx = 0; dz = -1; } else { dx = 0; dz = 1; }
+          depth = m + r;
+          d = 1;
+        } else {
+          if (d >= r) continue;
+          depth = r - d;
+          dx /= d;
+          dz /= d;
+          d = 1;
+        }
+        p.x += dx * depth;
+        p.z += dz * depth;
+        if (!deepest || depth > deepest.depth) deepest = { nx: dx, nz: dz, depth };
+      }
+    }
+    return deepest;
+  }
+
+  /** distance along the ray to the first box (2D), or maxDist */
+  raycast(ox: number, oz: number, dx: number, dz: number, maxDist: number, minHeight = 0): number {
+    const ex = ox + dx * maxDist;
+    const ez = oz + dz * maxDist;
+    const list = this.query(Math.min(ox, ex), Math.min(oz, ez), Math.max(ox, ex), Math.max(oz, ez), this.tmp);
+    let best = maxDist;
+    for (const b of list) {
+      if (b.h < minHeight) continue;
+      let t0 = 0;
+      let t1 = best;
+      if (Math.abs(dx) < 1e-9) {
+        if (ox < b.minX || ox > b.maxX) continue;
+      } else {
+        let a = (b.minX - ox) / dx, c = (b.maxX - ox) / dx;
+        if (a > c) [a, c] = [c, a];
+        t0 = Math.max(t0, a);
+        t1 = Math.min(t1, c);
+      }
+      if (Math.abs(dz) < 1e-9) {
+        if (oz < b.minZ || oz > b.maxZ) continue;
+      } else {
+        let a = (b.minZ - oz) / dz, c = (b.maxZ - oz) / dz;
+        if (a > c) [a, c] = [c, a];
+        t0 = Math.max(t0, a);
+        t1 = Math.min(t1, c);
+      }
+      if (t0 <= t1 && t0 < best && t0 > 0) best = t0;
+    }
+    return best;
+  }
+}

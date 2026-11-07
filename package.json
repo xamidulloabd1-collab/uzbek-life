@@ -1,0 +1,32 @@
+{
+  "name": "uzbek-life",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "UZBEK LIFE: OPEN WORLD \u2014 browser 3D life simulator (desktop + mobile)",
+  "scripts": {
+    "dev": "vite --host",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && vite build",
+    "build:single": "tsc --noEmit && vite build --mode single",
+    "preview": "vite preview --host",
+    "vehicles:scan": "node scripts/scan-vehicles.mjs",
+    "predev": "node scripts/scan-vehicles.mjs",
+    "prebuild": "node scripts/scan-vehicles.mjs"
+  },
+  "dependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "three": "0.170.0",
+    "zustand": "5.0.1"
+  },
+  "devDependencies": {
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "@types/three": "0.170.0",
+    "@vitejs/plugin-react": "4.3.3",
+    "typescript": "5.6.3",
+    "vite": "5.4.11",
+    "vite-plugin-singlefile": "2.0.3"
+  }
+}
