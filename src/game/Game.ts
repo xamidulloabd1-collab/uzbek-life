@@ -28,7 +28,8 @@ import { AudioManager } from './audio/AudioManager';
 import { AssetManager } from './engine/AssetManager';
 import { PostFX } from './engine/PostFX';
 import { MapRenderer, type MapMarker } from './MapRenderer';
-import { PLAYER_SPAWN, POIS, STARTER_CAR, districtNameAt, garageSpawnNear, blockAt, districtOf } from './world/cityLayout';
+import { PLAYER_SPAWN, POIS, STARTER_CAR, districtNameAt, garageSpawnNear } from './world/cityLayout';
+import { zoneAt } from './world/guzor/network';
 import { createOwned, vehicleBridge, refuel } from '@/systems/vehicles/vehicleService';
 import { updateMission } from '@/systems/jobs/missions';
 import { payDailyIncome } from '@/systems/properties/propertyService';
@@ -43,7 +44,7 @@ interface Interaction {
 export class Game {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
-  readonly camera = new THREE.PerspectiveCamera(58, 1, 0.5, 4500);
+  readonly camera = new THREE.PerspectiveCamera(58, 1, 0.5, 10000);
   readonly rig: CameraRig;
   readonly input = new InputManager();
   readonly audio = new AudioManager();
@@ -126,12 +127,23 @@ export class Game {
 
   /** heavy construction; call after the loading screen has painted */
   async init(onStep: (label: string) => void) {
+    const __t0 = performance.now();
+    let __last = __t0, __lastName = 'start';
+    const __times: Record<string, number> = {};
+    (window as unknown as { __initTimes: unknown }).__initTimes = __times;
+    const __step = onStep;
+    onStep = (m: string) => { const t = performance.now(); __times[__lastName] = Math.round(t - __last); __last = t; __lastName = m; __step(m); };
+
     const s = getGame().settings;
     const P = PRESETS[s.preset];
     onStep('Mashinalar katalogi…');
     try {
       const base = `${import.meta.env.BASE_URL}assets/vehicles/`;
-      const r = await fetch(`${base}catalog.json`, { cache: 'no-cache' });
+      if (!/^https?:$/.test(location.protocol)) throw new Error('no http');
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), 1200);
+      const r = await fetch(`${base}catalog.json`, { cache: 'no-cache', signal: ac.signal });
+      clearTimeout(timer);
       if (r.ok) this.catalogIds = registerVehicles(((await r.json()) as { vehicles?: [] }).vehicles ?? [], base);
     } catch {
       /* single-file build or offline: built-in vehicles only */
@@ -166,7 +178,9 @@ export class Game {
     this.showcase = new Showcase(this.world, this.builtShadows);
     this.scene.add(this.showcase.group);
     onStep('3D modellar kutubxonasi…');
-    await this.loadLibrary();
+    // GLB library loads after the menu appears; models are applied as soon as they arrive
+    void this.loadLibrary().catch((err) => console.warn('[library]', err));
+    onStep('end');
     this.scene.add(this.headlight, this.headlight.target);
     this.applySettings(s);
     this.input.attach(this.canvas);
@@ -309,6 +323,8 @@ export class Game {
       traffic.set(id, clone);
     }
     if (traffic.size) this.traffic.applyModels(traffic);
+    // building models for the World Environment Editor (kept apart from the player's home)
+    this.world.setWorldModels(new Map(pick('building').map((x) => [x.e.slot, { g: x.g, rotate: x.rotate }])));
     const rotate = new Map<GLTF, number>(loaded.map((x) => [x.g, x.rotate]));
     this.showcase.apply({
       houses: pick('house').map((x) => x.g), gates: pick('gate').map((x) => x.g), lamps: pick('lamp').map((x) => x.g),
@@ -469,6 +485,7 @@ export class Game {
     this.resetLaw();
     this.suppressSync = false;
     this.minutes = TIME.startMinutes;
+    this.world.prime(PLAYER_SPAWN.x, PLAYER_SPAWN.z);
     this.spawnVehicle(starter, STARTER_CAR.x, STARTER_CAR.z, STARTER_CAR.heading);
     this.player.place(PLAYER_SPAWN.x, PLAYER_SPAWN.z, 0);
     this.beginPlay();
@@ -500,6 +517,7 @@ export class Game {
       this.vehicle.dispose();
       this.vehicle = null;
     }
+    this.world.prime(d.player.x, d.player.z);
     this.player.place(d.player.x, d.player.z, d.player.heading);
     this.beginPlay();
     getGame().notify('Saqlangan o‘yin yuklandi', 'good');
@@ -1177,8 +1195,8 @@ export class Game {
       rain: st.rain,
       trafficDist: this.traffic.nearest(fx, fz),
       rural: (() => {
-        const b = blockAt(fx, fz);
-        return !!b && districtOf(b.i, b.j) === 'village';
+        const z = zoneAt(fx, fz);
+        return z === 'village' || z === 'fields';
       })(),
     });
   }

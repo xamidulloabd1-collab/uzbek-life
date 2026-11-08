@@ -4,6 +4,9 @@ export interface Box {
   minZ: number;
   maxZ: number;
   h: number;
+  /** oriented box (rotated buildings): centre, cos/sin of the frame rotation, half extents */
+  obb?: { cx: number; cz: number; c: number; s: number; hw: number; hd: number };
+  cells?: number[];
 }
 
 export interface Contact {
@@ -34,15 +37,45 @@ export class CollisionWorld {
     const id = this.boxes.length;
     this.boxes.push({ minX: Math.min(minX, maxX), maxX: Math.max(minX, maxX), minZ: Math.min(minZ, maxZ), maxZ: Math.max(minZ, maxZ), h });
     const b = this.boxes[id];
+    b.cells = [];
     for (let cx = Math.floor(b.minX / CELL); cx <= Math.floor(b.maxX / CELL); cx++) {
       for (let cz = Math.floor(b.minZ / CELL); cz <= Math.floor(b.maxZ / CELL); cz++) {
         const k = this.key(cx, cz);
         let list = this.grid.get(k);
         if (!list) this.grid.set(k, (list = []));
         list.push(id);
+        b.cells.push(k);
       }
     }
     return id;
+  }
+
+  /** rotated box: (cx, cz) centre, half sizes along the frame’s local x / z, frame rotation */
+  addOBB(cx: number, cz: number, hw: number, hd: number, rot: number, h = 3): number {
+    const c = Math.cos(rot), s = Math.sin(rot);
+    if (Math.abs(s) < 1e-3 || Math.abs(c) < 1e-3) {
+      const sw = Math.abs(s) > 0.5;
+      return this.addCentered(cx, cz, (sw ? hd : hw) * 2, (sw ? hw : hd) * 2, h);
+    }
+    const ex = Math.abs(c) * hw + Math.abs(s) * hd, ez = Math.abs(s) * hw + Math.abs(c) * hd;
+    const id = this.add(cx - ex, cz - ez, cx + ex, cz + ez, h);
+    this.boxes[id].obb = { cx, cz, c, s, hw, hd };
+    return id;
+  }
+
+  /** remove a box completely (streamed chunks) */
+  remove(id: number) {
+    const b = this.boxes[id];
+    if (!b) return;
+    b.h = -1;
+    for (const k of b.cells ?? []) {
+      const list = this.grid.get(k);
+      if (!list) continue;
+      const i = list.indexOf(id);
+      if (i >= 0) list.splice(i, 1);
+      if (!list.length) this.grid.delete(k);
+    }
+    b.cells = [];
   }
 
   disable(id: number) {
@@ -83,6 +116,29 @@ export class CollisionWorld {
       const list = this.query(p.x - r, p.z - r, p.x + r, p.z + r, this.tmp);
       for (const b of list) {
         if (b.h < 0.05 || b.h > maxHeight + 100) continue;
+        if (b.obb) {
+          const o = b.obb;
+          const dx0 = p.x - o.cx, dz0 = p.z - o.cz;
+          const lx = dx0 * o.c - dz0 * o.s, lz = dx0 * o.s + dz0 * o.c;
+          const qx = Math.max(-o.hw, Math.min(lx, o.hw)), qz = Math.max(-o.hd, Math.min(lz, o.hd));
+          let ux = lx - qx, uz = lz - qz;
+          let dd = Math.hypot(ux, uz);
+          let depth: number;
+          if (dd < 1e-6) {
+            const ax = o.hw - Math.abs(lx), az = o.hd - Math.abs(lz);
+            if (ax < az) { ux = Math.sign(lx) || 1; uz = 0; depth = ax + r; } else { ux = 0; uz = Math.sign(lz) || 1; depth = az + r; }
+          } else {
+            if (dd >= r) continue;
+            depth = r - dd;
+            ux /= dd;
+            uz /= dd;
+          }
+          const wx = ux * o.c + uz * o.s, wz = -ux * o.s + uz * o.c;
+          p.x += wx * depth;
+          p.z += wz * depth;
+          if (!deepest || depth > deepest.depth) deepest = { nx: wx, nz: wz, depth };
+          continue;
+        }
         const qx = Math.max(b.minX, Math.min(p.x, b.maxX));
         const qz = Math.max(b.minZ, Math.min(p.z, b.maxZ));
         let dx = p.x - qx;
@@ -119,6 +175,21 @@ export class CollisionWorld {
     let best = maxDist;
     for (const b of list) {
       if (b.h < minHeight) continue;
+      if (b.obb) {
+        const o = b.obb;
+        const lox = (ox - o.cx) * o.c - (oz - o.cz) * o.s, loz = (ox - o.cx) * o.s + (oz - o.cz) * o.c;
+        const ldx = dx * o.c - dz * o.s, ldz = dx * o.s + dz * o.c;
+        let a0 = 0, a1 = best, hit = true;
+        for (const [p0, dd, e] of [[lox, ldx, o.hw], [loz, ldz, o.hd]] as const) {
+          if (Math.abs(dd) < 1e-9) { if (p0 < -e || p0 > e) hit = false; continue; }
+          let a = (-e - p0) / dd, c2 = (e - p0) / dd;
+          if (a > c2) [a, c2] = [c2, a];
+          a0 = Math.max(a0, a);
+          a1 = Math.min(a1, c2);
+        }
+        if (hit && a0 <= a1 && a0 < best && a0 > 0) best = a0;
+        continue;
+      }
       let t0 = 0;
       let t1 = best;
       if (Math.abs(dx) < 1e-9) {

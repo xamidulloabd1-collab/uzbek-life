@@ -1,11 +1,12 @@
 import * as THREE from 'three';
-import { BLOCK, N, blockRect, districtOf, groundHeight } from '@/game/world/cityLayout';
+import { groundHeight } from '@/game/world/cityLayout';
+import { NET } from '@/game/world/guzor/network';
 import { pick } from '@/utils/math';
 
 interface Ped {
-  i: number;
-  j: number;
-  p: number;
+  e: number;
+  s: number;
+  side: number;
   dir: number;
   speed: number;
   phase: number;
@@ -19,7 +20,6 @@ interface Ped {
   cap: boolean;
 }
 
-const PERIM = (BLOCK - 4) * 4;
 const SHIRTS = ['#8c2f39', '#2d5f8a', '#e0d8c8', '#3b6b4a', '#6b4f8c', '#c47a2c', '#2b2b2b', '#a8a19a', '#c9356b', '#1aa3b4'];
 const SKINS = ['#c99a74', '#b5835f', '#d9ad88', '#a87452'];
 
@@ -56,7 +56,7 @@ export class Pedestrians {
       cap: im(capG, mat('#141414')),
     };
     for (let n = 0; n < max; n++) {
-      this.peds.push({ i: 0, j: 0, p: 0, dir: 1, speed: 1.3, phase: 0, inset: 2, dodge: 0, x: 0, z: 0, heading: 0, active: false, shirt: new THREE.Color(), cap: false });
+      this.peds.push({ e: 0, s: 0, side: 1, dir: 1, speed: 1.3, phase: 0, inset: 2, dodge: 0, x: 0, z: 0, heading: 0, active: false, shirt: new THREE.Color(), cap: false });
     }
     const skin = new THREE.Color();
     for (let n = 0; n < max; n++) {
@@ -65,34 +65,39 @@ export class Pedestrians {
     }
   }
 
+  /** walk along the edge of a street; at a junction carry on along another street */
   private place(ped: Ped) {
-    const r = blockRect(ped.i, ped.j);
-    const L = BLOCK - 4;
-    const p = ((ped.p % PERIM) + PERIM) % PERIM;
-    const a = r.x0 + ped.inset, b = r.z0 + ped.inset, c = r.x1 - ped.inset, d = r.z1 - ped.inset;
-    const side = Math.floor(p / L);
-    const t = (p - side * L) / L;
-    let x: number, z: number, hx: number, hz: number;
-    if (side === 0) { x = a + (c - a) * t; z = b; hx = 1; hz = 0; }
-    else if (side === 1) { x = c; z = b + (d - b) * t; hx = 0; hz = 1; }
-    else if (side === 2) { x = c - (c - a) * t; z = d; hx = -1; hz = 0; }
-    else { x = a; z = d - (d - b) * t; hx = 0; hz = -1; }
-    ped.x = x;
-    ped.z = z;
-    ped.heading = Math.atan2(hx * ped.dir, hz * ped.dir);
+    let e = NET.edges[ped.e];
+    if (ped.s > e.len - 2.5 || ped.s < 2.5) {
+      const nodeId = ped.s > e.len / 2 ? e.b : e.a;
+      const opts = NET.nodes[nodeId].edges.filter((id) => id !== e.id && NET.edges[id].cls !== 'highway');
+      if (opts.length) {
+        const ne = NET.edges[pick(Math.random, opts)];
+        ped.e = ne.id;
+        ped.dir = ne.a === nodeId ? 1 : -1;
+        ped.s = ped.dir > 0 ? 3 : ne.len - 3;
+        e = ne;
+      } else {
+        ped.dir = -ped.dir;
+        ped.s = Math.max(2.6, Math.min(e.len - 2.6, ped.s));
+      }
+    }
+    const p = NET.pointAt(e, ped.s);
+    const off = e.width / 2 + (e.sidewalk ? 1.6 : 0.9) + ped.inset;
+    ped.x = p.x - p.tz * off * ped.side;
+    ped.z = p.z + p.tx * off * ped.side;
+    ped.heading = Math.atan2(p.tx * ped.dir, p.tz * ped.dir);
   }
 
   private spawn(px: number, pz: number) {
     const ped = this.peds.find((q) => !q.active);
     if (!ped) return;
     for (let tries = 0; tries < 10; tries++) {
-      const i = Math.floor(Math.random() * N), j = Math.floor(Math.random() * N);
-      const dist = districtOf(i, j);
-      if (dist === 'village' && Math.random() < 0.7) continue;
-      const r = blockRect(i, j);
-      const d = Math.hypot(r.cx - px, r.cz - pz);
-      if (d > 170 || d < 20) continue;
-      Object.assign(ped, { i, j, p: Math.random() * PERIM, dir: Math.random() < 0.5 ? 1 : -1, speed: 1.1 + Math.random() * 0.6, inset: 1.6 + Math.random() * 1.2, dodge: 0, active: true, cap: Math.random() < 0.3 });
+      const a = Math.random() * Math.PI * 2, r = 30 + Math.random() * 140;
+      const hit = NET.nearestRoad(px + Math.cos(a) * r, pz + Math.sin(a) * r, 40);
+      if (!hit || hit.e.cls === 'highway' || hit.e.zone === 'fields') continue;
+      if (hit.e.zone === 'village' && Math.random() < 0.6) continue;
+      Object.assign(ped, { e: hit.e.id, s: Math.max(3, Math.min(hit.e.len - 3, hit.s)), side: Math.random() < 0.5 ? 1 : -1, dir: Math.random() < 0.5 ? 1 : -1, speed: 1.1 + Math.random() * 0.6, inset: Math.random() * 1.2, dodge: 0, active: true, cap: Math.random() < 0.3 });
       ped.shirt.set(pick(Math.random, SHIRTS));
       this.place(ped);
       if (Math.hypot(ped.x - px, ped.z - pz) < 25) continue;
@@ -123,7 +128,7 @@ export class Pedestrians {
         }
       }
       ped.dodge = Math.max(0, ped.dodge - dt * 0.4);
-      ped.p += speed * dt * ped.dir;
+      ped.s += speed * dt * ped.dir;
       ped.phase += dt * speed * 4.2;
       const saved = ped.inset;
       ped.inset = saved + ped.dodge;

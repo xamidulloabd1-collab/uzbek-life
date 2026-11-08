@@ -1,0 +1,4 @@
+{
+  "source": "none — run scripts/import-osm.mjs with a .osm export of G‘uzor to replace the traced roads",
+  "roads": []
+}

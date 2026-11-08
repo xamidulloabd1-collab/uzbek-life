@@ -2,6 +2,7 @@ import type { Side, Vec2 } from '@/types';
 import { PROPERTIES } from '@/config/properties';
 import type { RNG } from '@/utils/math';
 import { pick, rand } from '@/utils/math';
+import { NET, STATION, RAIL_Z as RAIL_Z_NET, P as GP, frameToWorld, groundAt, zoneLabel, type Edge, type Lot, type LotKind, type SiteKind, type Zone } from './guzor/network';
 
 /** Blocks per side */
 export const N = 9;
@@ -71,7 +72,12 @@ export type SpecialKind =
   | 'warehouse'
   | 'farm'
   | 'fuel'
-  | 'home';
+  | 'home'
+  | 'mosque'
+  | 'complex'
+  | 'villas'
+  | 'newdev'
+  | 'mirijanda';
 
 export const SPECIAL: Record<string, SpecialKind> = {
   '4,4': 'plaza',
@@ -89,6 +95,14 @@ export const SPECIAL: Record<string, SpecialKind> = {
   '8,3': 'fuel',
   '0,7': 'fuel',
   '1,1': 'home',
+  // landmark / district identity blocks
+  '5,1': 'mosque',
+  '3,0': 'complex',
+  '3,1': 'complex',
+  '0,0': 'villas',
+  '2,0': 'villas',
+  '0,5': 'newdev',
+  '3,8': 'mirijanda',
 };
 
 export const specialAt = (i: number, j: number): SpecialKind | undefined => SPECIAL[`${i},${j}`];
@@ -115,10 +129,9 @@ export function blockAt(x: number, z: number): { i: number; j: number } | null {
   return { i, j };
 }
 
+/** height of the ground the player / vehicles stand on (G‘uzor terrain, roads, lot plinths) */
 export function groundHeight(x: number, z: number) {
-  const b = blockAt(x, z);
-  if (!b || isFlatBlock(b.i, b.j)) return 0;
-  return CURB_H;
+  return groundAt(x, z);
 }
 
 /** G‘uzordaryo crosses the town through this block row (bridges carry every north–south street) */
@@ -136,6 +149,11 @@ export const MAHALLA_NAMES = ['Gulshan', 'Eskibog‘', 'Istiqbol', 'Tinchlik', '
 
 export function blockName(i: number, j: number) {
   if (j === RIVER_ROW) return 'G‘uzordaryo sohili';
+  const sp = specialAt(i, j);
+  if (sp === 'mosque') return 'Amir Temur mahallasi';
+  if (sp === 'complex') return '«Yangi hayot» turar-joy majmuasi';
+  if (sp === 'villas' || sp === 'newdev') return 'Yangi uylar dahasi';
+  if (sp === 'mirijanda') return 'Mardtepa qishlog‘i';
   const d = districtOf(i, j);
   const n = MAHALLA_NAMES[(i * 5 + j * 3) % MAHALLA_NAMES.length];
   if (d === 'mahalla') return `${n} mahallasi`;
@@ -144,11 +162,12 @@ export function blockName(i: number, j: number) {
 }
 
 export function districtNameAt(x: number, z: number) {
-  if (Math.abs(z - RAIL_Z) < 40 && Math.abs(x - STATION_X) < 120) return 'G‘uzor temir yo‘l vokzali';
-  if (Math.abs(x) > HALF - ROAD || Math.abs(z) > HALF - ROAD) return 'Katta halqa yo‘li';
-  const i = Math.min(N - 1, Math.max(0, Math.floor((x + HALF) / PITCH)));
-  const j = Math.min(N - 1, Math.max(0, Math.floor((z + HALF) / PITCH)));
-  return blockName(i, j);
+  const L = NET.lotAt(x, z);
+  if (L?.site) return L.site.name;
+  if (Math.hypot(x - STATION.x, z - (RAIL_Z_NET + 17)) < 70) return 'G‘uzor temir yo‘l vokzali';
+  const r = NET.nearestRoad(x, z, 10);
+  if (r && r.dist < r.e.width / 2 + 1 && r.e.major && r.e.name) return r.e.name;
+  return zoneLabel(x, z);
 }
 
 /** point on the block's own sidewalk/yard, `inset` metres in from the edge, `t` 0..1 along the side */
@@ -176,16 +195,31 @@ export function curbHeading(side: Side) {
   return side === 's' ? -Math.PI / 2 : side === 'n' ? Math.PI / 2 : side === 'w' ? Math.PI : 0;
 }
 
+const ZONE_OF: Record<District, Zone[]> = {
+  downtown: ['center'], apartments: ['center', 'mahalla'], mahalla: ['mahalla', 'villas'], industrial: ['industrial'], village: ['village', 'fields'],
+};
+
+/** kerb-side point on an edge; heading follows right-hand traffic on that side */
+export function kerbPoint(e: Edge, s: number, side: number) {
+  const p = NET.pointAt(e, s);
+  const nx = -p.tz * side, nz = p.tx * side;
+  const off = e.width / 2 - 1.2;
+  return { x: p.x + nx * off, z: p.z + nz * off, heading: Math.atan2(nz, -nx) };
+}
+
 export function randomCurbPoint(rng: RNG, districts?: District[], avoid?: Vec2, minDist = 0): Vec2 {
-  for (let tries = 0; tries < 60; tries++) {
-    const i = Math.floor(rng() * N);
-    const j = Math.floor(rng() * N);
-    if (districts && !districts.includes(districtOf(i, j))) continue;
-    const p = curbPoint(i, j, pick(rng, ['n', 's', 'e', 'w'] as Side[]), rand(rng, 0.2, 0.8));
+  const zones = districts ? districts.flatMap((d) => ZONE_OF[d]) : null;
+  for (let tries = 0; tries < 120; tries++) {
+    const e = NET.edges[Math.floor(rng() * NET.edges.length)];
+    if (e.cls === 'highway' || e.cls === 'lane' || e.len < 30) continue;
+    if (zones && !zones.includes(e.zone)) continue;
+    const p = kerbPoint(e, 12 + rng() * (e.len - 24), rng() < 0.5 ? 1 : -1);
     if (avoid && Math.hypot(p.x - avoid.x, p.z - avoid.z) < minDist) continue;
-    return p;
+    return { x: p.x, z: p.z };
   }
-  return curbPoint(4, 4, 's', 0.5);
+  const e = NET.edges.find((x) => x.zone === 'center') ?? NET.edges[0];
+  const p = kerbPoint(e, e.len / 2, 1);
+  return { x: p.x, z: p.z };
 }
 
 export type POIKind = SpecialKind | 'property';
@@ -199,60 +233,86 @@ export interface POI {
   propertyId?: string;
   /** short glyph for the map */
   glyph: string;
+  /** facing of boards placed at the POI */
+  rot?: number;
 }
 
-const POI_DEFS: { kind: SpecialKind; name: string; block: [number, number]; side: Side; inset: number; radius: number; glyph: string }[] = [
-  { kind: 'bank', name: 'Bank', block: [3, 4], side: 's', inset: 2.5, radius: 3, glyph: 'B' },
-  { kind: 'jobs', name: 'Mehnat birjasi', block: [5, 4], side: 's', inset: 2.5, radius: 3, glyph: 'I' },
-  { kind: 'realty', name: 'Ko‘chmas mulk agentligi', block: [4, 3], side: 's', inset: 2.5, radius: 3, glyph: 'M' },
-  { kind: 'dealership', name: 'Avtosalon', block: [7, 5], side: 'w', inset: 2.5, radius: 3.5, glyph: 'A' },
-  { kind: 'service', name: 'Avtoservis va garaj', block: [7, 1], side: 's', inset: 9, radius: 7, glyph: 'S' },
-  { kind: 'osh', name: 'Osh markazi', block: [5, 3], side: 's', inset: 2.5, radius: 3, glyph: 'O' },
-  { kind: 'warehouse', name: 'Pochta ombori', block: [7, 3], side: 's', inset: 2.5, radius: 3, glyph: 'P' },
-  { kind: 'farm', name: 'Fermer xo‘jaligi', block: [2, 7], side: 'n', inset: 6, radius: 4, glyph: 'F' },
-  { kind: 'bazaar', name: 'Dehqon bozori', block: [1, 3], side: 's', inset: 2.5, radius: 3.5, glyph: 'D' },
-  { kind: 'fuel', name: 'AYOQSH', block: [8, 3], side: 'e', inset: 12, radius: 7, glyph: '⛽' },
-  { kind: 'fuel', name: 'AYOQSH', block: [0, 7], side: 'w', inset: 12, radius: 7, glyph: '⛽' },
-  { kind: 'home', name: 'Ijaradagi uyingiz', block: [1, 1], side: 's', inset: 2.5, radius: 2.5, glyph: 'U' },
-];
+const SITE_POI: Partial<Record<SiteKind, { kind: SpecialKind; inset: number; radius: number; glyph: string }>> = {
+  bank: { kind: 'bank', inset: 2.5, radius: 3, glyph: 'B' },
+  jobs: { kind: 'jobs', inset: 2.5, radius: 3, glyph: 'I' },
+  realty: { kind: 'realty', inset: 2.5, radius: 3, glyph: 'M' },
+  dealership: { kind: 'dealership', inset: 2.5, radius: 3.5, glyph: 'A' },
+  service: { kind: 'service', inset: 9, radius: 7, glyph: 'S' },
+  osh: { kind: 'osh', inset: 2.5, radius: 3, glyph: 'O' },
+  warehouse: { kind: 'warehouse', inset: 2.5, radius: 3, glyph: 'P' },
+  farm: { kind: 'farm', inset: 6, radius: 4, glyph: 'F' },
+  bazaar: { kind: 'bazaar', inset: 2.5, radius: 3.5, glyph: 'D' },
+  fuel: { kind: 'fuel', inset: 12, radius: 7, glyph: '⛽' },
+};
+const LOCAL_FRONT: Record<Side, (inset: number) => [number, number]> = {
+  s: (i) => [38, 76 - i], n: (i) => [38, i], w: (i) => [i, 38], e: (i) => [76 - i, 38],
+};
+export const SITES = NET.lots.filter((l) => l.kind === 'site');
+
+const PROP_TARGET: Record<string, { px: number; py: number; kinds: LotKind[] }> = {
+  'apt-yunusobod': { px: 820, py: 450, kinds: ['apartment'] },
+  'apt-yangi': { px: 980, py: 520, kinds: ['apartment'] },
+  'hovli-bogbon': { px: 700, py: 620, kinds: ['house'] },
+  'hovli-katta': { px: 1100, py: 700, kinds: ['house'] },
+  'villa-qishloq': { px: 1330, py: 470, kinds: ['villa', 'house'] },
+  'biz-choyxona': { px: 900, py: 600, kinds: ['commercial'] },
+  'biz-avtoyuvish': { px: 1420, py: 380, kinds: ['industrial', 'commercial'] },
+  'biz-supermarket': { px: 870, py: 680, kinds: ['commercial'] },
+  'garaj-ikki': { px: 1000, py: 262, kinds: ['industrial', 'commercial'] },
+};
+const usedLots = new Set<number>();
+function nearestLot(px: number, py: number, kinds: LotKind[]) {
+  const t = GP(px, py);
+  let best: Lot | null = null, bd = Infinity;
+  for (const L of NET.lots) {
+    if (!kinds.includes(L.kind) || usedLots.has(L.id)) continue;
+    const d = Math.hypot(L.cx - t.x, L.cz - t.z);
+    if (d < bd) { bd = d; best = L; }
+  }
+  if (best) usedLots.add(best.id);
+  return best!;
+}
+const lotFront = (L: Lot) => frameToWorld(L.ox, L.oz, L.rot, L.w * 0.5, L.kind === 'commercial' ? 1.4 : 2.2);
+const HOME_LOT = nearestLot(1060, 650, ['house']);
+HOME_LOT.home = true;
 
 export const POIS: POI[] = [
-  ...POI_DEFS.map((d, n) => ({
-    id: `${d.kind}-${n}`,
-    kind: d.kind,
-    name: d.name,
-    pos: sidePoint(d.block[0], d.block[1], d.side, d.inset),
-    radius: d.radius,
-    glyph: d.glyph,
-  })),
-  ...PROPERTIES.map((p) => ({
-    id: `prop-${p.id}`,
-    kind: 'property' as const,
-    name: p.name,
-    pos: sidePoint(p.block[0], p.block[1], p.side, 2.5, 0.42),
-    radius: 2.6,
-    propertyId: p.id,
-    glyph: '₪',
-  })),
+  ...SITES.flatMap((L, n) => {
+    const def = L.site!;
+    const m = SITE_POI[def.kind];
+    if (!m) return [];
+    const [lx, lz] = LOCAL_FRONT[def.front](m.inset);
+    return [{ id: `${m.kind}-${n}`, kind: m.kind, name: def.name, pos: frameToWorld(L.ox, L.oz, L.rot, lx, lz), radius: m.radius, glyph: m.glyph, rot: L.rot }];
+  }),
+  { id: 'home-0', kind: 'home' as const, name: 'Ijaradagi uyingiz', pos: lotFront(HOME_LOT), radius: 2.5, glyph: 'U', rot: HOME_LOT.rot + Math.PI },
+  ...PROPERTIES.map((p) => {
+    const tg = PROP_TARGET[p.id] ?? { px: 900, py: 600, kinds: ['house'] as LotKind[] };
+    const L = nearestLot(tg.px, tg.py, tg.kinds);
+    L.propertyId = p.id;
+    return { id: `prop-${p.id}`, kind: 'property' as const, name: p.name, pos: lotFront(L), radius: 2.6, propertyId: p.id, glyph: '₪', rot: L.rot + Math.PI };
+  }),
 ];
 
 export const poiOf = (kind: SpecialKind) => POIS.find((p) => p.kind === kind)!;
 
-export const PLAYER_SPAWN = sidePoint(1, 1, 's', 2, 0.5);
-export const STARTER_CAR = { ...curbPoint(1, 1, 's', 0.36), heading: curbHeading('s') };
-export const DEALERSHIP_SPAWN = { ...curbPoint(7, 5, 'w', 0.3), heading: curbHeading('w') };
-
-/** where a vehicle appears when taken out of a garage near `p` */
+/** kerb spot on the nearest street, on the same side as p */
 export function garageSpawnNear(p: Vec2) {
-  const b = blockAt(p.x, p.z);
-  if (!b) return { x: p.x, z: p.z, heading: 0 };
-  const r = blockRect(b.i, b.j);
-  const d = { n: p.z - r.z0, s: r.z1 - p.z, w: p.x - r.x0, e: r.x1 - p.x };
-  const side = (Object.keys(d) as Side[]).reduce((a, c) => (d[c] < d[a] ? c : a), 'n');
-  const t =
-    side === 'n' ? (p.x - r.x0) / BLOCK : side === 's' ? (r.x1 - p.x) / BLOCK : side === 'w' ? (r.z1 - p.z) / BLOCK : (p.z - r.z0) / BLOCK;
-  return { ...curbPoint(b.i, b.j, side, Math.min(0.9, Math.max(0.1, t + 0.08))), heading: curbHeading(side) };
+  const r = NET.nearestRoad(p.x, p.z, 30) ?? NET.nearestRoad(p.x, p.z, 90);
+  if (!r) return { x: p.x, z: p.z, heading: 0 };
+  const q = NET.pointAt(r.e, r.s);
+  const side = (p.x - q.x) * -q.tz + (p.z - q.z) * q.tx >= 0 ? 1 : -1;
+  const s = Math.max(8, Math.min(r.e.len - 8, r.s + 4));
+  return kerbPoint(r.e, s, side);
 }
+
+export const PLAYER_SPAWN = poiOf('home').pos;
+export const STARTER_CAR = garageSpawnNear(PLAYER_SPAWN);
+export const DEALERSHIP_SPAWN = garageSpawnNear(poiOf('dealership').pos);
 
 /** Road graph used by traffic */
 export const DIRS: [number, number][] = [
@@ -282,4 +342,11 @@ export function isRuralSegment(vertical: boolean, k: number, l: number) {
   }
   if (l === 0 || l === N) return false;
   return l >= 8;
+}
+
+if (typeof window !== 'undefined') {
+  (window as unknown as { __POIS_SITES: unknown }).__POIS_SITES = SITES.map((L) => {
+    const f = frameToWorld(L.ox, L.oz, L.rot, 38, L.site!.front === 'n' ? -14 : 90);
+    return { name: L.site!.name, x: f.x, z: f.z, rot: L.rot + (L.site!.front === 'n' ? 0 : Math.PI) };
+  });
 }

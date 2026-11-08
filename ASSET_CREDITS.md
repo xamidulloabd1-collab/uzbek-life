@@ -9,3 +9,8 @@
 
 **Mashina modellari:** litsenziyali tashqi GLB modellar hali qo‘shilmagan. Barcha mashinalar kodda yasalgan original modellar (brend dizayni nusxa olinmagan).
 Shahar, binolar, teksturalar va tovushlar ham kodda yaratilgan original assetlar.
+
+
+## Xarita ma’lumotlari
+- Joylar va asosiy yo‘llar: foydalanuvchi suratlari (Google Maps) faqat namuna sifatida ishlatilgan, hech qanday tasvir o‘yinga qo‘shilmagan.
+- Musofir ota masjidi joylashuvi: © OpenStreetMap contributors (ODbL 1.0).

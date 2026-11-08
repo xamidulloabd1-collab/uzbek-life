@@ -80,7 +80,7 @@ export class Environment {
           #include <colorspace_fragment>
         }`,
     });
-    this.sky = new THREE.Mesh(new THREE.SphereGeometry(3800, 32, 16), this.skyMat);
+    this.sky = new THREE.Mesh(new THREE.SphereGeometry(9000, 32, 16), this.skyMat);
     this.sky.frustumCulled = false;
     this.sky.renderOrder = -10;
     scene.add(this.sky);

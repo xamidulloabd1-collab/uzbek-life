@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { World } from './World';
 import type { Slot } from './buildings';
-import { blockRect } from './cityLayout';
 
 /** The premium Mahalla showcase: the player's home block, where GLB assets replace procedural parts. */
 export const SHOWCASE_BLOCK: [number, number] = [1, 1];
@@ -96,7 +95,9 @@ export class Showcase {
     this.report.gates = place(a.gates, slots.gates, 'footprint');
     this.report.proceduralHousesLeft = a.houses.length ? 0 : slots.houses.length;
 
-    const r = blockRect(i, j);
+    void i;
+    void j;
+    const r = this.world.homeRect();
     const pad = 8;
     const asSlot = (p: { x: number; z: number; rot: number }): Slot => ({ x: p.x, z: p.z, rot: p.rot, w: 1, d: 1, gy: 0.15 });
     if (a.trees.length) {

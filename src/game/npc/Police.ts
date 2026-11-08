@@ -4,7 +4,7 @@ import type { TextureLib } from '@/game/world/textures';
 import type { CollisionWorld } from '@/game/physics/collision';
 import { Vehicle } from '@/game/vehicles/Vehicle';
 import type { Obstacle } from '@/game/vehicles/VehiclePhysics';
-import { LANE, N, nodePos, rightOf, DIRS } from '@/game/world/cityLayout';
+import { NET } from '@/game/world/guzor/network';
 import { angleDiff, clamp } from '@/utils/math';
 
 interface Unit {
@@ -30,12 +30,13 @@ export class Police {
 
   private spawn(px: number, pz: number) {
     for (let tries = 0; tries < 20; tries++) {
-      const k = Math.floor(Math.random() * (N + 1)), l = Math.floor(Math.random() * (N + 1));
-      const p = nodePos(k, l);
+      const a = Math.random() * Math.PI * 2, r = 130 + Math.random() * 120;
+      const hit = NET.nearestRoad(px + Math.cos(a) * r, pz + Math.sin(a) * r, 40);
+      if (!hit) continue;
+      const q = NET.pointAt(hit.e, hit.s);
+      const p = { x: q.x - q.tz * hit.e.lane, z: q.z + q.tx * hit.e.lane };
       const d = Math.hypot(p.x - px, p.z - pz);
-      if (d < 120 || d > 260) continue;
-      const dir = Math.floor(Math.random() * 4);
-      const [rx, rz] = rightOf(dir);
+      if (d < 110 || d > 270) continue;
       const rec: OwnedVehicle = {
         uid: `police-${this.serial++}`, specId: 'amir', color: '#f4f4f2', wheels: 2, tint: 2, plate: '70 P 112 UZ', engine: 2, handling: 3, health: 100, fuel: 60,
       };
@@ -52,7 +53,7 @@ export class Police {
       const stripe = new THREE.Mesh(new THREE.BoxGeometry(v.spec.dims.width + 0.02, 0.12, 2.2), new THREE.MeshStandardMaterial({ color: '#1f4e8c', roughness: 0.4 }));
       stripe.position.set(0, v.spec.shape.belt - 0.28, 0);
       v.model.body.add(stripe);
-      v.place(p.x + DIRS[dir][0] * 8 + rx * LANE, p.z + DIRS[dir][1] * 8 + rz * LANE, Math.atan2(px - p.x, pz - p.z));
+      v.place(p.x, p.z, Math.atan2(px - p.x, pz - p.z));
       this.scene.add(v.group);
       this.units.push({ v, red, blue, stuck: 0, reverse: 0 });
       return;

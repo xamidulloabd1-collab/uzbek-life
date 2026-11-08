@@ -10,8 +10,8 @@ import { pick, rand, randInt, type RNG } from '@/utils/math';
 import { addDoor, addWindowGrid, type Face, type FacadeSet, type FrameStyle } from './facadeKit';
 
 export type TreeType = 'chinor' | 'terak' | 'fruit' | 'pine' | 'bush' | 'grass';
-export interface TreeInst { type: TreeType; x: number; z: number; s: number }
-export interface LampInst { x: number; z: number; rot: number; tall?: boolean }
+export interface TreeInst { type: TreeType; x: number; z: number; s: number; key?: string; rot?: number }
+export interface LampInst { x: number; z: number; rot: number; tall?: boolean; key?: string; kind?: 'lamp' | 'bench' | 'bin'; s?: number }
 export interface SignInst { tex: THREE.Texture; x: number; y: number; z: number; w: number; h: number; rot: number }
 
 interface Frame { ox: number; oz: number; rot: number }
@@ -41,12 +41,25 @@ export interface BlockCtx {
   opts: BlockOptions;
   slots: { houses: Slot[]; gates: Slot[] };
   parked: ParkedInst[];
+  /** collision ids created while building (streamed chunks remove them again) */
+  colIds?: number[];
 }
 
 const M = new THREE.Matrix4();
 const MR = new THREE.Matrix4();
 
-export function sideFrame(r: Rect, side: Side | 'c'): Frame {
+let SITE: Frame = { ox: 0, oz: 0, rot: 0 };
+let LABEL = { name: '', sub: '' };
+/** origin + rotation of the 76×76 local square (or lot) that the builders below work in */
+export function setSite(ox: number, oz: number, rot: number) {
+  SITE = { ox, oz, rot };
+}
+export function sideFrame(_r: Rect, side: Side | 'c'): Frame {
+  const L = side === 's' ? { x: BLOCK, z: BLOCK, rot: Math.PI } : side === 'w' ? { x: 0, z: BLOCK, rot: Math.PI / 2 } : side === 'e' ? { x: BLOCK, z: 0, rot: -Math.PI / 2 } : { x: 0, z: 0, rot: 0 };
+  const c = Math.cos(SITE.rot), sn = Math.sin(SITE.rot);
+  return { ox: SITE.ox + L.x * c + L.z * sn, oz: SITE.oz - L.x * sn + L.z * c, rot: SITE.rot + L.rot };
+}
+export function sideFrameGrid(r: Rect, side: Side | 'c'): Frame {
   switch (side) {
     case 'n':
     case 'c':
@@ -69,20 +82,20 @@ export function setFrame(ctx: BlockCtx, f: Frame) {
 
 function W(ctx: BlockCtx, lx: number, lz: number) {
   const { ox, oz, rot } = ctx.frame;
-  const c = Math.round(Math.cos(rot)), s = Math.round(Math.sin(rot));
+  const c = Math.cos(rot), s = Math.sin(rot);
   return { x: ox + lx * c + lz * s, z: oz - lx * s + lz * c };
 }
 
 function col(ctx: BlockCtx, lx: number, lz: number, w: number, d: number, h: number) {
   const p = W(ctx, lx, lz);
-  const swap = Math.abs(Math.sin(ctx.frame.rot)) > 0.5;
-  ctx.col.addCentered(p.x, p.z, swap ? d : w, swap ? w : d, h);
+  const id = ctx.col.addOBB(p.x, p.z, w / 2, d / 2, ctx.frame.rot, h);
+  ctx.colIds?.push(id);
 }
 
 /** wall face of a box in the current frame → world-space Face for the facade kit */
 function face(ctx: BlockCtx, lx: number, lz: number, ux: number, uz: number, nx: number, nz: number, width: number, oy: number): Face {
   const p = W(ctx, lx, lz);
-  const c = Math.round(Math.cos(ctx.frame.rot)), s = Math.round(Math.sin(ctx.frame.rot));
+  const c = Math.cos(ctx.frame.rot), s = Math.sin(ctx.frame.rot);
   const r = (x: number, z: number) => [x * c + z * s, -x * s + z * c];
   const [wux, wuz] = r(ux, uz);
   const [wnx, wnz] = r(nx, nz);
@@ -116,7 +129,7 @@ function lamp(ctx: BlockCtx, lx: number, lz: number) {
 function sign(ctx: BlockCtx, tex: THREE.Texture, lx: number, y: number, lz: number, w: number, h: number) {
   const p = W(ctx, lx, lz);
   // signs face the street (local -z)
-  ctx.signs.push({ tex, x: p.x, y, z: p.z, w, h, rot: ctx.frame.rot + Math.PI });
+  ctx.signs.push({ tex, x: p.x, y: ctx.gy + y, z: p.z, w, h, rot: ctx.frame.rot + Math.PI });
 }
 
 function slot(ctx: BlockCtx, lx: number, lz: number, w: number, d: number): Slot {
@@ -130,10 +143,7 @@ function parkedCar(ctx: BlockCtx, lx: number, lz: number, rot: number, specId?: 
     const spec = specId ? VEHICLES.find((v) => v.id === specId)! : pick(ctx.rng, VEHICLES);
     const color = pick(ctx.rng, TRAFFIC_COLORS);
     const p = W(ctx, lx, lz);
-    const along = Math.abs(Math.sin(rot)) > 0.5;
-    const lw = along ? spec.dims.length : spec.dims.width, ld = along ? spec.dims.width : spec.dims.length;
-    const swap = Math.abs(Math.sin(ctx.frame.rot)) > 0.5;
-    const colId = ctx.col.addCentered(p.x, p.z, swap ? ld : lw, swap ? lw : ld, 1.4);
+    const colId = ctx.col.addOBB(p.x, p.z, spec.dims.width / 2, spec.dims.length / 2, ctx.frame.rot + rot, 1.4);
     ctx.parked.push({ x: p.x, z: p.z, rot: ctx.frame.rot + rot, specId: spec.id, color, gy: ctx.gy, colId, display });
     return;
   }
@@ -163,7 +173,8 @@ function building(ctx: BlockCtx, lx: number, lz: number, w: number, d: number, h
   const off = Math.floor(ctx.rng() * 4) * 0.25;
   const sh = shop ? 4.2 : 0;
   if (shop) ctx.b.box('fac-shop', lx, gy, lz, w, sh, d, ctx.tex.facade('shop').tile, 0, off);
-  ctx.b.box(`fac-${kind}`, lx, gy + sh, lz, w, h - sh, d, ctx.tex.facade(kind).tile, 0, off);
+  const variant = kind === 'panel' || kind === 'modern' ? pick(ctx.rng, ['', '-b', '-c']) : '';
+  ctx.b.box(`fac-${kind}${variant}`, lx, gy + sh, lz, w, h - sh, d, ctx.tex.facade(kind).tile, 0, off);
   ctx.b.box(roofKey, lx, gy + h, lz, w + 0.4, 0.5, d + 0.4, [4, 4]);
   if (shop) ctx.d.box('concrete', lx, gy + sh, lz, w + 0.6, 0.25, d + 0.6);
   if (h > 9) rooftop(ctx, lx, lz, w, d, gy + h + 0.5);
@@ -186,44 +197,26 @@ function building(ctx: BlockCtx, lx: number, lz: number, w: number, d: number, h
 
 // ---------------------------------------------------------------- ground
 export function blockGround(ctx: BlockCtx, inner: string, kind: 'curb' | 'flat', aryk = false) {
-  const { r, b } = ctx;
-  setFrame(ctx, sideFrame(r, 'c'));
-  b.base.identity();
+  setFrame(ctx, sideFrame(ctx.r, 'c'));
+  const b = ctx.b, h = ctx.gy;
+  b.box('curb', BLOCK / 2, h - 8, BLOCK / 2, BLOCK, 7.99, BLOCK);
   if (kind === 'flat') {
-    b.quad(inner, r.x0, r.z0, r.x1, r.z1, 0.012, 'world', inner === 'plaza' ? 6 : 8);
+    b.quad(inner, 0, 0, BLOCK, BLOCK, h + 0.006, 'world', inner === 'plaza' ? 6 : 8);
     return;
   }
-  const h = 0.15;
   const SW = 4;
-  // curbs
-  b.box('curb', r.cx, 0, r.z0 + 0.15, BLOCK, h + 0.01, 0.3);
-  b.box('curb', r.cx, 0, r.z1 - 0.15, BLOCK, h + 0.01, 0.3);
-  b.box('curb', r.x0 + 0.15, 0, r.cz, 0.3, h + 0.01, BLOCK - 0.6);
-  b.box('curb', r.x1 - 0.15, 0, r.cz, 0.3, h + 0.01, BLOCK - 0.6);
-  // sidewalks
-  b.quad('pavers', r.x0 + 0.3, r.z0 + 0.3, r.x1 - 0.3, r.z0 + SW, h, 'world', 2.4);
-  b.quad('pavers', r.x0 + 0.3, r.z1 - SW, r.x1 - 0.3, r.z1 - 0.3, h, 'world', 2.4);
-  b.quad('pavers', r.x0 + 0.3, r.z0 + SW, r.x0 + SW, r.z1 - SW, h, 'world', 2.4);
-  b.quad('pavers', r.x1 - SW, r.z0 + SW, r.x1 - 0.3, r.z1 - SW, h, 'world', 2.4);
-  b.quad(inner, r.x0 + SW, r.z0 + SW, r.x1 - SW, r.z1 - SW, h, 'world', inner === 'plaza' ? 6 : 8);
+  b.quad('pavers', 0.3, 0.3, BLOCK - 0.3, SW, h + 0.006, 'world', 2.4);
+  b.quad('pavers', 0.3, BLOCK - SW, BLOCK - 0.3, BLOCK - 0.3, h + 0.006, 'world', 2.4);
+  b.quad('pavers', 0.3, SW, SW, BLOCK - SW, h + 0.006, 'world', 2.4);
+  b.quad('pavers', BLOCK - SW, SW, BLOCK - 0.3, BLOCK - SW, h + 0.006, 'world', 2.4);
+  b.quad(inner, SW, SW, BLOCK - SW, BLOCK - SW, h + 0.006, 'world', inner === 'plaza' ? 6 : 8);
   if (aryk) {
-    // irrigation channels (aryk) along the street, typical of mahalla streets
-    const a0 = 2.7, a1 = 3.4;
-    b.quad('water', r.x0 + a0, r.z0 + a0, r.x1 - a0, r.z0 + a1, h - 0.08, 'world', 4);
-    b.quad('water', r.x0 + a0, r.z1 - a1, r.x1 - a0, r.z1 - a0, h - 0.08, 'world', 4);
-    b.quad('water', r.x0 + a0, r.z0 + a1, r.x0 + a1, r.z1 - a1, h - 0.08, 'world', 4);
-    b.quad('water', r.x1 - a1, r.z0 + a1, r.x1 - a0, r.z1 - a1, h - 0.08, 'world', 4);
-    // concrete channel lips
-    for (const a of [a0, a1]) {
-      b.box('curb', r.cx, h - 0.1, r.z0 + a, BLOCK - a * 2, 0.14, 0.12);
-      b.box('curb', r.cx, h - 0.1, r.z1 - a, BLOCK - a * 2, 0.14, 0.12);
-      b.box('curb', r.x0 + a, h - 0.1, r.cz, 0.12, 0.14, BLOCK - a * 2);
-      b.box('curb', r.x1 - a, h - 0.1, r.cz, 0.12, 0.14, BLOCK - a * 2);
-    }
+    const a0 = SW + 0.4, a1 = SW + 1.2;
+    b.quad('water', a0, a0, BLOCK - a0, a1, h - 0.08, 'world', 4);
+    b.quad('water', a0, BLOCK - a1, BLOCK - a0, BLOCK - a0, h - 0.08, 'world', 4);
   }
 }
 
-/** lamps + street trees on each side */
 function streetFurniture(ctx: BlockCtx, treeType: TreeType | null, lampEvery = 26, treeEvery = 13, treeLz = 2.4) {
   for (const side of ['n', 's', 'e', 'w'] as Side[]) {
     setFrame(ctx, sideFrame(ctx.r, side));
@@ -383,7 +376,8 @@ function apartments(ctx: BlockCtx) {
   panelBlock(ctx, 13, 38, 12, 26, 9, 'panel', false, false);
   panelBlock(ctx, 63, 38, 12, 26, ctx.rng() < 0.5 ? 9 : 5, 'panel', false, false);
   // courtyard: driveway, parked cars, playground
-  ctx.b.quad('asphalt', ctx.r.x0 + 22, ctx.r.z0 + 22, ctx.r.x0 + 54, ctx.r.z0 + 27, ctx.gy + 0.01, 'world', 8);
+  setFrame(ctx, sideFrame(ctx.r, 'c'));
+  ctx.b.quad('asphalt', 22, 22, 54, 27, ctx.gy + 0.01, 'world', 8);
   for (let k = 0; k < 6; k++) if (ctx.rng() < 0.75) parkedCar(ctx, 24 + k * 4.8, 29, Math.PI);
   ctx.d.box('red', 32, ctx.gy, 44, 3, 0.4, 3);
   ctx.d.box('yellow', 38, ctx.gy, 46, 0.2, 2.6, 0.2);
@@ -405,8 +399,9 @@ function park(ctx: BlockCtx) {
   streetFurniture(ctx, null, 22);
   setFrame(ctx, sideFrame(ctx.r, 'c'));
   const gy = ctx.gy;
-  ctx.b.quad('pavers', ctx.r.x0 + 35, ctx.r.z0 + 4, ctx.r.x0 + 41, ctx.r.z1 - 4, gy + 0.01, 'world', 2.4);
-  ctx.b.quad('pavers', ctx.r.x0 + 4, ctx.r.z0 + 35, ctx.r.x1 - 4, ctx.r.z0 + 41, gy + 0.01, 'world', 2.4);
+  setFrame(ctx, sideFrame(ctx.r, 'c'));
+  ctx.b.quad('pavers', 35, 4, 41, BLOCK - 4, gy + 0.01, 'world', 2.4);
+  ctx.b.quad('pavers', 4, 35, BLOCK - 4, 41, gy + 0.01, 'world', 2.4);
   // pond
   ctx.b.cyl('chalk', 20, gy - 0.1, 20, 9.5, 9.5, 0.35, 28);
   ctx.b.cyl('water', 20, gy - 0.05, 20, 9, 9, 0.35, 28);
@@ -422,14 +417,10 @@ function park(ctx: BlockCtx) {
     ctx.d.box('wood', px + x, gy + 0.6, pz, 1, 0.3, 1);
   }
   col(ctx, px, pz, 14, 10, 0.6);
-  // monument
-  ctx.b.box('chalk', 38, gy, 38, 3, 1.2, 3);
-  ctx.b.box('concrete', 38, gy + 1.2, 38, 1.2, 7, 1.2);
-  ctx.b.sphere('gold', 38, gy + 9, 38, 0.9, 1, 1, 1, 1);
-  col(ctx, 38, 38, 3, 3, 9);
+  memorial(ctx, 38, 38);
   for (let n = 0; n < 26; n++) {
     const x = rand(ctx.rng, 8, 68), z = rand(ctx.rng, 8, 68);
-    if (Math.abs(x - 38) < 5 || Math.abs(z - 38) < 5 || Math.hypot(x - 20, z - 20) < 12 || Math.hypot(x - 56, z - 56) < 10) continue;
+    if (Math.hypot(x - 38, z - 38) < 11 || Math.abs(x - 38) < 5 || Math.abs(z - 38) < 5 || Math.hypot(x - 20, z - 20) < 12 || Math.hypot(x - 56, z - 56) < 10) continue;
     tree(ctx, x, z, ctx.rng() < 0.7 ? 'chinor' : 'pine', 1.1);
   }
   for (let k = 0; k < 6; k++) ctx.d.box('wood', 30 + (k % 2) * 16, gy, 12 + k * 9, 0.6, 0.45, 2);
@@ -444,21 +435,21 @@ function school(ctx: BlockCtx) {
   building(ctx, 38, 18, 46, 13, 10, 'panel', false);
   building(ctx, 12, 32, 13, 26, 10, 'panel', false);
   setFrame(ctx, sideFrame(ctx.r, 'c'));
-  const r = ctx.r;
-  ctx.b.quad('sport', r.x0 + 30, r.z0 + 8, r.x0 + 70, r.z0 + 36, ctx.gy + 0.02, 'world', 40);
+  setFrame(ctx, sideFrame(ctx.r, 'c'));
+  ctx.b.quad('sport', 30, 8, 70, 36, ctx.gy + 0.02, 'world', 40);
   for (const x of [31, 69]) {
     ctx.d.box('white', x, ctx.gy, 22, 0.15, 2.4, 0.15);
     ctx.d.box('white', x, ctx.gy + 2.4, 22, 0.15, 0.15, 7.3);
   }
   setFrame(ctx, sideFrame(ctx.r, 's'));
-  sign(ctx, ctx.tex.sign('7-MAKTAB', '#1d6b8f', '#fff', 'Umumta’lim maktabi'), 38, 6, 11.4, 9, 2.2);
+  sign(ctx, ctx.tex.sign(LABEL.name.toUpperCase() || '7-MAKTAB', '#1d6b8f', '#fff', 'Umumta’lim maktabi'), 38, 6, 11.4, 9, 2.2);
 }
 
 // ---------------------------------------------------------------- mahalla
 function houseLot(ctx: BlockCtx, lx0: number, w: number, depth: number, closeRight: boolean, big = false) {
   const gy = ctx.gy;
   const rng = ctx.rng;
-  const wallKey = pick(rng, ['plaster', 'plaster2', 'plaster']);
+  const wallKey = pick(rng, ['plaster', 'plaster2', 'plaster3', 'plaster4', 'plaster']);
   const wallZ = 4.7;
   const gateW = 3.4;
   const gx = lx0 + rand(rng, 1.2, Math.max(1.3, w - gateW - 1.2));
@@ -503,7 +494,7 @@ function houseLot(ctx: BlockCtx, lx0: number, w: number, depth: number, closeRig
     tree(ctx, lx0 + rand(rng, 2, w - 2), rand(rng, wallZ + 2.5, hz - hd / 2 - 3), 'fruit');
     return;
   }
-  ctx.b.box(`fac-${kind}plain`, lx0 + w / 2, gy, hz, hw, hh, hd, ctx.tex.plainWall(kind).tile, 0, rng());
+  ctx.b.box(`fac-${kind}plain${kind === 'house' ? pick(rng, ['', '-b', '-c']) : ''}`, lx0 + w / 2, gy, hz, hw, hh, hd, ctx.tex.plainWall(kind).tile, 0, rng());
   ctx.b.box('chalk', lx0 + w / 2, gy + hh - 0.25, hz, hw + 0.16, 0.25, hd + 0.16);
   {
     const style: FrameStyle = rng() < 0.6 ? 'blue' : 'wood';
@@ -903,9 +894,193 @@ function riverBlock(ctx: BlockCtx) {
   }
 }
 
+
+// ---------------------------------------------------------------- district identity blocks
+/** modern residential complex: towers of different heights around a circular landscaped park */
+function modernComplex(ctx: BlockCtx) {
+  blockGround(ctx, 'grass', 'curb');
+  streetFurniture(ctx, 'chinor', 24, 12);
+  setFrame(ctx, sideFrame(ctx.r, 'c'));
+  const gy = ctx.gy, rng = ctx.rng;
+  const heights = ctx.j === 0 ? [16, 12, 9, 14] : [10, 18, 13, 8];
+  ([[14, 14], [62, 14], [14, 62], [62, 62]] as const).forEach(([x, z], n) => {
+    const w = rand(rng, 13, 17), d = rand(rng, 13, 17);
+    building(ctx, x, z, w, d, heights[n] * 3.2, n % 2 ? 'modern' : 'panel', n === 1, 'roof', z < 38 ? 'pz' : 'nz');
+  });
+  building(ctx, 38, 9, 18, 9, 4.6, 'office', true);
+  // circular park: paved ring, lawn, fountain, radial paths
+  ctx.b.cyl('plaza', 38, gy, 38, 16, 16, 0.04, 40);
+  ctx.b.cyl('grass', 38, gy + 0.01, 38, 11.5, 11.5, 0.04, 40);
+  ctx.b.cyl('plaza', 38, gy + 0.02, 38, 5, 5, 0.04, 28);
+  ctx.b.cyl('chalk', 38, gy, 38, 3.4, 3.6, 0.6, 28);
+  ctx.b.cyl('water', 38, gy + 0.45, 38, 3.1, 3.1, 0.18, 28);
+  ctx.b.cyl('chalk', 38, gy, 38, 0.45, 0.6, 2.2, 12);
+  col(ctx, 38, 38, 7, 7, 0.6);
+  for (const a of [0.785, 2.356, 3.927, 5.498]) {
+    const g = new THREE.BoxGeometry(2.6, 0.05, 20).translate(0, gy + 0.03, 26);
+    g.rotateY(a);
+    M.makeTranslation(38, 0, 38);
+    ctx.b.add('pavers', g, M);
+  }
+  for (let k = 0; k < 10; k++) {
+    const a = (k / 10) * Math.PI * 2;
+    tree(ctx, 38 + Math.cos(a) * 19, 38 + Math.sin(a) * 19, k % 3 ? 'chinor' : 'pine', 0.9);
+    ctx.d.box('wood', 38 + Math.cos(a + 0.3) * 13.5, gy, 38 + Math.sin(a + 0.3) * 13.5, 1.8, 0.45, 0.6, null, -a);
+  }
+  scatter(ctx, 'bush', 26, 26, 50, 50, 14, 0.8);
+  scatter(ctx, 'grass', 24, 24, 52, 52, 40);
+  // playground and parking
+  ctx.d.box('red', 24, gy, 48, 4, 0.5, 4);
+  ctx.d.box('awning-blue', 27, gy, 52, 0.25, 2.8, 0.25);
+  ctx.d.box('yellow', 52, gy, 25, 3, 1.4, 3);
+  for (let k = 0; k < 5; k++) if (rng() < 0.8) parkedCar(ctx, 27 + k * 5, 70, Math.PI);
+}
+
+/** new private houses: two-storey villas with low fences, garages and gardens */
+function villaLot(ctx: BlockCtx, lx0: number, w: number) {
+  const gy = ctx.gy, rng = ctx.rng;
+  ctx.b.box('chalk', lx0 + w / 2, gy, 4.6, w, 0.9, 0.3);
+  for (let x = lx0 + 0.5; x < lx0 + w; x += 0.5) ctx.d.box('darkmetal', x, gy + 0.9, 4.6, 0.04, 0.8, 0.04);
+  ctx.col.addCentered(...(() => { const p = W(ctx, lx0 + w / 2, 4.6); return [p.x, p.z] as [number, number]; })(), Math.abs(Math.sin(ctx.frame.rot)) > 0.5 ? 0.4 : w, Math.abs(Math.sin(ctx.frame.rot)) > 0.5 ? w : 0.4, 1.7);
+  const hw = w - 5, hd = 10, hz = 18;
+  const key = pick(rng, ['fac-houseplain', 'fac-houseplain-b', 'fac-houseplain-c']);
+  ctx.b.box(key, lx0 + 2 + hw / 2, gy, hz, hw, 6.6, hd, ctx.tex.plainWall('house').tile, 0, rng());
+  ctx.b.box('chalk', lx0 + 2 + hw / 2, gy + 6.6, hz, hw + 1.2, 0.35, hd + 1.2);
+  ctx.b.box('showglass', lx0 + 2 + hw * 0.3, gy + 0.3, hz - hd / 2 - 0.05, hw * 0.4, 2.6, 0.1);
+  ctx.b.box('chalk', lx0 + 2 + hw * 0.62, gy + 3.3, hz - hd / 2 - 0.8, hw * 0.5, 0.2, 1.6);
+  ctx.b.box('darkmetal', lx0 + w - 2.4, gy, hz - 1, 3.4, 2.6, 6);
+  ctx.b.box('chalk', lx0 + w - 2.4, gy + 2.6, hz - 1, 3.8, 0.25, 6.4);
+  col(ctx, lx0 + 2 + hw / 2, hz, hw, hd, 6.6);
+  col(ctx, lx0 + w - 2.4, hz - 1, 3.4, 6, 2.6);
+  const faces = boxFaces(ctx, lx0 + 2 + hw / 2, hz, hw, hd, gy);
+  addWindowGrid(ctx.facade, faces.nz, { bay: 3, floorH: 3.3, floors: 2, winW: 1.5, winH: 1.6, sill: 0.9, style: 'pvc', lit: 0.4, skip: (k, f) => f === 0 && k < 2 }, rng);
+  addDoor(ctx.facade, faces.nz, hw * 0.75);
+  tree(ctx, lx0 + 3, 9, rng() < 0.5 ? 'fruit' : 'pine');
+}
+
+function villas(ctx: BlockCtx, construction: boolean) {
+  blockGround(ctx, 'grass', 'curb');
+  for (const side of ['n', 's'] as Side[]) {
+    setFrame(ctx, sideFrame(ctx.r, side));
+    for (let lx = 10; lx < BLOCK - 6; lx += 26) lamp(ctx, lx, 0.8);
+    for (let lx = 5; lx < BLOCK - 4; lx += 11) tree(ctx, lx, 2.6, 'fruit', 0.9);
+    let lx = 4.6;
+    let n = 0;
+    while (lx < 66) {
+      const w = Math.min(rand(ctx.rng, 17, 22), 71.4 - lx);
+      if (w < 14) break;
+      if (construction && side === 's' && n === 1) constructionSite(ctx, lx, w);
+      else villaLot(ctx, lx, w);
+      lx += w;
+      n++;
+    }
+  }
+  setFrame(ctx, sideFrame(ctx.r, 'c'));
+  scatter(ctx, 'grass', 8, 30, 68, 46, 40);
+  tree(ctx, 30, 38, 'chinor');
+  tree(ctx, 46, 38, 'chinor');
+}
+
+/** unfinished concrete frame with a tower crane */
+function constructionSite(ctx: BlockCtx, lx0: number, w: number) {
+  const gy = ctx.gy;
+  ctx.b.box('corr-grey', lx0 + w / 2, gy, 4.8, w, 2.4, 0.2, [4, 2.4]);
+  col(ctx, lx0 + w / 2, 4.8, w, 0.3, 2.4);
+  for (let f = 0; f < 3; f++) {
+    ctx.b.box('concrete', lx0 + w / 2, gy + f * 3.3 + 3.0, 18, w - 4, 0.3, 12);
+    for (const x of [lx0 + 3, lx0 + w / 2, lx0 + w - 3]) for (const z of [13, 23]) ctx.b.box('concrete', x, gy + f * 3.3, z, 0.4, 3.0, 0.4);
+  }
+  col(ctx, lx0 + w / 2, 18, w - 4, 12, 9);
+  const cx = lx0 + w - 2, cz = 27;
+  ctx.b.box('yellow', cx, gy, cz, 1.4, 34, 1.4);
+  ctx.b.box('yellow', cx - 8, gy + 34, cz, 30, 1.2, 1.2);
+  ctx.b.box('concrete', cx + 6, gy + 32.8, cz, 3, 1.4, 2);
+  ctx.b.box('darkmetal', cx - 1, gy + 32, cz, 2.2, 2, 2.2);
+  col(ctx, cx, cz, 1.6, 1.6, 34);
+  ctx.d.cone('hay', lx0 + 4, gy, 9, 2.2, 1.6, 10);
+  ctx.d.box('red', lx0 + 7, gy, 9, 2.2, 1.0, 1.2);
+}
+
+/** Musofir ota jome masjidi (verified location: Amir Temur MFY, Chinobod ko‘chasi 4) — appearance approximated */
+function mosque(ctx: BlockCtx) {
+  blockGround(ctx, 'plaza', 'curb');
+  streetFurniture(ctx, 'chinor', 22, 11);
+  setFrame(ctx, sideFrame(ctx.r, 's'));
+  const gy = ctx.gy;
+  // prayer hall + dome
+  ctx.b.box('plaster2', 38, gy, 34, 30, 9, 20, [4, 3]);
+  ctx.b.box('chalk', 38, gy + 9, 34, 30.6, 0.6, 20.6);
+  ctx.b.cyl('chalk', 38, gy + 9.6, 34, 6, 6, 2.2, 24);
+  ctx.b.dome('dome', 38, gy + 11.8, 34, 6.2, 1.25, 24, [2.2, 2.2]);
+  ctx.b.cyl('gold', 38, gy + 19.5, 34, 0.12, 0.2, 1.8, 8);
+  col(ctx, 38, 34, 30, 20, 9);
+  // ayvon (columned veranda) facing the courtyard
+  for (let x = 25; x <= 51; x += 3.25) ctx.b.cyl('wood', x, gy, 21.8, 0.24, 0.28, 5, 10);
+  ctx.b.box('wood', 38, gy + 5, 21.8, 30, 0.5, 3.6);
+  ctx.b.box('tin-green', 38, gy + 5.5, 22.2, 30.6, 0.2, 4.4);
+  ctx.b.box('majolica', 38, gy, 23.95, 6, 4.6, 0.12, [2, 2]);
+  // minaret
+  ctx.b.cyl('chalk', 57, gy, 26, 1.6, 1.7, 1.2, 16);
+  ctx.b.cyl('plaster2', 57, gy + 1.2, 26, 1.05, 1.35, 24, 16, [3, 3]);
+  ctx.b.cyl('majolica', 57, gy + 25.2, 26, 1.5, 1.1, 1.6, 16, [2, 2]);
+  ctx.b.dome('dome', 57, gy + 26.8, 26, 1.2, 1.4, 14, [1.5, 1.5]);
+  col(ctx, 57, 26, 3.4, 3.4, 28);
+  // courtyard
+  ctx.d.cyl('chalk', 38, gy, 13, 2.2, 2.4, 0.7, 20);
+  ctx.d.cyl('water', 38, gy + 0.55, 13, 2, 2, 0.15, 20);
+  for (const x of [20, 56]) for (const z of [10, 16]) tree(ctx, x, z, 'chinor', 1.1);
+  // Musofir ota ziyoratgohi: small domed rammed-earth mausoleum and the old cemetery behind
+  ctx.b.box('wall-earth', 18, gy, 58, 7, 4.5, 7, [3, 3]);
+  ctx.b.dome('wall-earth', 18, gy + 4.5, 58, 3.4, 0.9, 16, [3, 3]);
+  col(ctx, 18, 58, 7, 7, 5);
+  ctx.b.box('plaster', 47, gy, 69, 46, 1.2, 0.3, [4, 1.2]);
+  for (let k = 0; k < 18; k++) ctx.d.box('chalk', 30 + (k % 6) * 6, gy, 52 + Math.floor(k / 6) * 5, 0.6, 0.8 + (k % 3) * 0.15, 0.15);
+  sign(ctx, ctx.tex.sign(LABEL.name || 'MUSOFIR OTA', '#2f6b3f', '#ffffff', LABEL.sub || 'Jome masjidi'), 38, 7, 5.2, 12, 3);
+}
+
+/** Mirijanda ota maqbarasi (verified: Mardtepa village, V–VI c., renovated 2019) — appearance approximated */
+function mirijanda(ctx: BlockCtx) {
+  village(ctx);
+  setFrame(ctx, sideFrame(ctx.r, 'n'));
+  const gy = 0;
+  ctx.b.box('chalk', 38, gy, 30, 18, 0.8, 18);
+  ctx.b.box('brick', 38, gy + 0.8, 30, 9, 6, 9);
+  ctx.b.cyl('brick', 38, gy + 6.8, 30, 4.2, 4.2, 1.4, 20);
+  ctx.b.dome('wall-earth', 38, gy + 8.2, 30, 4.3, 1.1, 20, [3, 3]);
+  ctx.b.box('lapis', 38, gy + 0.8, 25.45, 3, 3.6, 0.12);
+  col(ctx, 38, 30, 18, 18, 1);
+  col(ctx, 38, 30, 9, 9, 9);
+  for (const x of [26, 50]) tree(ctx, x, 22, 'terak', 1.1);
+  sign(ctx, ctx.tex.sign('MIRIJANDA OTA', '#5a4632', '#ffffff', 'Maqbara · V–VI asrlar'), 38, 2.2, 3.4, 8, 2);
+}
+
+/** memorial square (placement in the town fictionalised; the motif is common to Uzbek districts) */
+function memorial(ctx: BlockCtx, x: number, z: number) {
+  const gy = ctx.gy;
+  ctx.b.cyl('plaza', x, gy, z, 9, 9, 0.05, 32);
+  const wall = new THREE.CylinderGeometry(8, 8, 2.6, 24, 1, true, Math.PI * 0.7, Math.PI * 0.6);
+  M.makeTranslation(x, gy + 1.3, z);
+  ctx.b.add('concrete', wall, M);
+  ctx.b.box('chalk', x, gy, z - 3, 3.2, 1.0, 2.2);
+  // seated, head-bowed figure (stylised bronze)
+  ctx.b.cyl('bronze', x, gy + 1.0, z - 3.2, 0.55, 0.9, 1.2, 14);
+  ctx.b.cyl('bronze', x, gy + 2.2, z - 3.1, 0.38, 0.5, 0.9, 14);
+  ctx.b.sphere('bronze', x, gy + 3.2, z - 2.95, 0.3, 1, 1.05, 1, 1);
+  ctx.b.cone('bronze', x, gy + 2.5, z - 3.05, 0.7, 1.2, 14);
+  ctx.b.cyl('concrete', x, gy, z + 2, 0.7, 0.8, 0.4, 16);
+  ctx.b.cone('flame', x, gy + 0.4, z + 2, 0.25, 0.6, 8);
+  col(ctx, x, z - 3, 3.4, 2.4, 3);
+}
+
 // ---------------------------------------------------------------- dispatcher
 export function buildBlock(ctx: BlockCtx) {
   if (ctx.j === RIVER_ROW) return riverBlock(ctx);
+  const sp0 = specialAt(ctx.i, ctx.j);
+  if (sp0 === 'mosque') return mosque(ctx);
+  if (sp0 === 'complex') return modernComplex(ctx);
+  if (sp0 === 'villas') return villas(ctx, false);
+  if (sp0 === 'newdev') return villas(ctx, true);
+  if (sp0 === 'mirijanda') return mirijanda(ctx);
   const sp = specialAt(ctx.i, ctx.j);
   const dist = districtOf(ctx.i, ctx.j);
   const prop = propertyAt(ctx.i, ctx.j);
@@ -939,4 +1114,139 @@ export function buildBlock(ctx: BlockCtx) {
   if (dist === 'mahalla') return mahalla(ctx);
   if (dist === 'industrial') return industrial(ctx);
   return village(ctx);
+}
+
+// ---------------------------------------------------------------- G‘uzor open world: landmark sites and street lots
+function hokimiyat(ctx: BlockCtx) {
+  blockGround(ctx, 'plaza', 'curb');
+  streetFurniture(ctx, 'chinor', 22, 12);
+  setFrame(ctx, sideFrame(ctx.r, 's'));
+  const gy = ctx.gy;
+  building(ctx, 38, 34, 50, 18, 13.2, 'office', false);
+  for (let x = 24; x <= 52; x += 4) ctx.b.cyl('chalk', x, gy, 22.6, 0.42, 0.48, 9, 12);
+  ctx.b.box('chalk', 38, gy + 9, 22.6, 31, 1.1, 3.6);
+  ctx.b.box('chalk', 38, gy, 21.4, 33, 0.45, 6);
+  ctx.d.cyl('metal', 38, gy, 10, 0.08, 0.1, 14, 8);
+  ctx.d.box('awning-blue', 39.7, gy + 12.6, 10, 3.2, 0.6, 0.04);
+  ctx.d.box('white', 39.7, gy + 12.0, 10, 3.2, 0.6, 0.04);
+  ctx.d.box('tin-green', 39.7, gy + 11.4, 10, 3.2, 0.6, 0.04);
+  col(ctx, 38, 10, 0.4, 0.4, 14);
+  for (const x of [12, 64]) for (const z of [10, 18]) tree(ctx, x, z, 'chinor', 1.1);
+  sign(ctx, ctx.tex.sign('HOKIMIYAT', '#1d3f6e', '#ffffff', 'G‘uzor tumani hokimiyati'), 38, 6.2, 5.4, 12, 2.6);
+}
+
+function stadium(ctx: BlockCtx) {
+  blockGround(ctx, 'grass', 'flat');
+  const gy = ctx.gy;
+  ctx.b.quad('sport', 12, 16, 64, 60, gy + 0.02, 'world', 40);
+  for (let k = 0; k < 4; k++) {
+    ctx.b.box('concrete', 38, gy + k * 0.9, 9 - k * 1.4, 54, 0.9, 1.4);
+    ctx.b.box('concrete', 38, gy + k * 0.9, 67 + k * 1.4, 54, 0.9, 1.4);
+  }
+  col(ctx, 38, 7, 54, 6, 3.6);
+  col(ctx, 38, 69, 54, 6, 3.6);
+  for (const z of [17, 59]) {
+    for (const x of [34.3, 41.7]) ctx.d.box('white', x, gy, z, 0.14, 2.4, 0.14);
+    ctx.d.box('white', 38, gy + 2.4, z, 7.6, 0.14, 0.14);
+  }
+  for (const [x, z] of [[5, 5], [71, 5], [5, 71], [71, 71]]) {
+    ctx.b.cyl('metal', x, gy, z, 0.25, 0.35, 22, 8);
+    ctx.d.box('white', x, gy + 22, z, 3, 1.4, 0.4);
+    col(ctx, x, z, 0.7, 0.7, 22);
+  }
+  setFrame(ctx, sideFrame(ctx.r, 's'));
+  sign(ctx, ctx.tex.sign('SHO‘RTAN', '#2f6b3f', '#ffffff', 'Stadion'), 38, 4.6, 1.2, 10, 2.4);
+}
+
+function hall(ctx: BlockCtx, floors: number, title: string, color: string) {
+  blockGround(ctx, 'plaza', 'curb');
+  streetFurniture(ctx, 'chinor', 24, 12);
+  setFrame(ctx, sideFrame(ctx.r, 's'));
+  building(ctx, 38, 24, 44, 22, floors * 4, 'modern', false);
+  for (let k = 0; k < 6; k++) if (ctx.rng() < 0.8) parkedCar(ctx, 14 + k * 9.5, 52, 0);
+  sign(ctx, ctx.tex.sign(title, color, '#ffffff', LABEL.sub), 38, Math.min(floors * 4 - 1.5, 7), 12.8, 12, 2.6);
+}
+
+function farmSite(ctx: BlockCtx) {
+  blockGround(ctx, 'steppe', 'flat');
+  setFrame(ctx, sideFrame(ctx.r, 'n'));
+  farmstead(ctx, 38, 36, true);
+  for (let k = 0; k < 10; k++) ctx.d.cyl('hay', 10 + k * 5.5, ctx.gy, 66, 1.3, 1.5, 1.9, 10);
+  sign(ctx, ctx.tex.sign('FERMER XO‘JALIGI', '#5a7a2c', '#ffffff', ''), 38, 2.6, 3, 9, 2);
+}
+
+/** a landmark / service site in its own rotated 76 × 76 frame (see setSite) */
+export function buildSite(ctx: BlockCtx, kind: string, name: string, sub = '') {
+  LABEL = { name, sub };
+  ctx.i = kind === 'fuel' ? 8 : 1;
+  ctx.j = 1;
+  switch (kind) {
+    case 'hokimiyat': return hokimiyat(ctx);
+    case 'park': return park(ctx);
+    case 'stadium': return stadium(ctx);
+    case 'bazaar': return bazaar(ctx);
+    case 'mosque':
+      LABEL = { name: 'MUSOFIR OTA', sub: sub ? `Jome masjidi · ${sub}` : 'Jome masjidi' };
+      return mosque(ctx);
+    case 'mirijanda':
+      LABEL = { name: 'XAZRATI MIRIJANDA', sub: 'Jome masjidi' };
+      return mosque(ctx);
+    case 'complex': return modernComplex(ctx);
+    case 'bank': case 'jobs': case 'realty': case 'osh': return downtownSpecial(ctx, kind);
+    case 'dealership': return dealership(ctx);
+    case 'service': return service(ctx);
+    case 'warehouse': return warehouse(ctx);
+    case 'fuel': return fuel(ctx);
+    case 'school': return school(ctx);
+    case 'restaurant': return hall(ctx, 2, 'TO‘YXONA', '#7a2e4a');
+    case 'hotel': return hall(ctx, 4, 'MEHMONXONA', '#2e4a7a');
+    case 'farm': return farmSite(ctx);
+  }
+}
+
+/** one street lot in its own frame: local x along the street, local z into the lot */
+export function buildLot(ctx: BlockCtx, kind: string, w: number, d: number, big: boolean, center: boolean) {
+  setFrame(ctx, sideFrame(ctx.r, 'n'));
+  const gy = ctx.gy, rng = ctx.rng;
+  const ground = kind === 'industrial' ? 'concrete' : kind === 'commercial' || kind === 'apartment' ? 'pavers' : kind === 'villa' || kind === 'orchard' ? 'grass' : 'steppe';
+  ctx.b.box('curb', w / 2, gy - 4, d / 2, w, 3.99, d);
+  ctx.b.quad(ground, 0, 0, w, d, gy + 0.004, 'world', 8);
+  if (kind === 'house') houseLot(ctx, 0, w, d - 0.3, true, big);
+  else if (kind === 'villa') villaLot(ctx, 0, w);
+  else if (kind === 'commercial') {
+    const floors = center ? randInt(rng, 2, 4) : randInt(rng, 1, 2);
+    const kinds = ['brick', 'office', 'modern'] as const;
+    building(ctx, w / 2, 3 + (d - 5) / 2, w - 1.2, d - 5, floors * 3.4, kinds[Math.floor(rng() * 3)], true, 'roof', 'nz');
+  } else if (kind === 'apartment') {
+    panelBlock(ctx, w / 2, 14, w - 6, 12, randInt(rng, 5, 9), rng() < 0.5 ? 'panel' : 'modern', center && rng() < 0.5, true);
+    for (let x = 5; x < w - 3; x += 8) tree(ctx, x, d - 3, 'chinor', 0.9);
+  } else if (kind === 'industrial') {
+    const sw = w - 6, sd = d - 16, zc = 9 + sd / 2;
+    ctx.b.box('corr-grey', w / 2, gy, zc, sw, 7, sd, [4, 7]);
+    ctx.b.prism('tin-grey', w / 2, gy + 7, zc, sw + 0.6, 1.5, sd + 0.6);
+    ctx.b.box('darkmetal', w / 2, gy, 8.95, Math.min(6, sw - 2), 5, 0.1);
+    col(ctx, w / 2, zc, sw, sd, 7);
+    ctx.b.box('concrete', 0.2, gy, d / 2, 0.3, 2.2, d - 1);
+    col(ctx, 0.2, d / 2, 0.3, d - 1, 2.2);
+  } else if (kind === 'farm') {
+    const gx = rand(rng, 3, w - 7);
+    ctx.b.box('plaster2', gx / 2, gy, 4.5, gx, 2, 0.3, [4, 2]);
+    ctx.b.box('plaster2', (gx + 4 + w) / 2, gy, 4.5, w - gx - 4, 2, 0.3, [4, 2]);
+    col(ctx, gx / 2, 4.5, gx, 0.3, 2);
+    col(ctx, (gx + 4 + w) / 2, 4.5, w - gx - 4, 0.3, 2);
+    const hw = Math.min(14, w - 6);
+    ctx.b.box('fac-house', w / 2, gy, 13, hw, 3.3, 7, ctx.tex.facade('house').tile);
+    ctx.b.prism(rng() < 0.5 ? 'tin-red' : 'tin-green', w / 2, gy + 3.3, 13, hw + 0.6, 1.3, 7.6);
+    col(ctx, w / 2, 13, hw, 7, 3.3);
+    const bw = Math.min(12, w * 0.45);
+    ctx.b.box('wall-earth', w - bw / 2 - 2, gy, d - 6, bw, 3, 7, [3, 3]);
+    col(ctx, w - bw / 2 - 2, d - 6, bw, 7, 3);
+    ctx.d.cyl('hay', 6, gy, d - 6, 1.5, 1.7, 2.2, 10);
+    tree(ctx, 4, 8, 'fruit');
+    tree(ctx, w - 4, 20, 'fruit');
+  } else if (kind === 'orchard') {
+    ctx.b.box('wall-earth', w / 2, gy, 0.6, w, 1.3, 0.4, [3, 1.3]);
+    col(ctx, w / 2, 0.6, w, 0.4, 1.3);
+    for (let x = 4; x < w - 2; x += 6) for (let z = 6; z < d - 2; z += 7) tree(ctx, x + (rng() - 0.5), z, 'fruit', 0.75 + rng() * 0.3);
+  }
 }

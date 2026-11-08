@@ -12,7 +12,6 @@ npm run build:single   # dist-single/index.html — bitta fayl (≈6 MB)
 npm run typecheck
 ```
 Talab: Node 18+, WebGL 2 qo‘llaydigan brauzer (Chrome, Edge, Firefox, Safari 15+).
-Netlify’da build buyrug‘i va `dist/` publish papkasi `netlify.toml` orqali belgilanadi; unda build JavaScript modullari va Draco decoder skriptlari uchun MIME turi ham aniq o‘rnatilgan.
 
 ## Boshqaruv
 | Kompyuter | Telefon | Amal |
@@ -48,4 +47,16 @@ src/
 ## Qo‘shimcha hujjatlar
 - `AUDIT.md` — arxitektura va grafika tahlili, placeholderlar ro‘yxati, tezlik va reja.
 - `ASSETS.md` — litsenziyalar va litsenziyali mashina modellarini ulash yo‘riqnomasi.
-# uzbek-life
+
+## Dunyo (0.11)
+Dunyo uzluksiz: asosiy yo‘llar, G‘uzordaryo va joylar foydalanuvchi yuborgan xarita suratlaridan olingan, mahalla ko‘chalari generatsiya qilinadi. Batafsil: `LANDMARK_DISTRICT_INVENTORY.md`.
+
+## Hujjatlar
+- `CHANGELOG.md` — o‘zgarishlar tarixi
+- `TESTING.md` — test hisoboti
+- `KNOWN_LIMITATIONS.md` — ma’lum cheklovlar
+- `ASSET_INVENTORY.md`, `ASSET_LICENSES.md`, `ASSET_CREDITS.md`, `THIRD_PARTY_NOTICES.md` — assetlar va litsenziyalar
+- `public/assets/vehicles/README.md` — real mashina modellarini qo‘shish tartibi
+
+## Tez ishga tushirish (o‘rnatishsiz)
+`OYNASH-uzbek-life.html` faylini brauzerda oching (Chrome, Edge, Safari yoki Firefox).

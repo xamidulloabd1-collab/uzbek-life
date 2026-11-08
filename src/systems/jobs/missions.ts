@@ -2,7 +2,8 @@ import type { ActiveMission, MissionStep, Vec2 } from '@/types';
 import { useGame } from '@/stores/gameStore';
 import { ECONOMY } from '@/config/economy';
 import { VEHICLE_MAP } from '@/config/vehicles';
-import { blockRect, poiOf, randomCurbPoint } from '@/game/world/cityLayout';
+import { SITES, poiOf, randomCurbPoint } from '@/game/world/cityLayout';
+import { frameToWorld } from '@/game/world/guzor/network';
 import { earn } from '@/systems/economy/economy';
 import { formatSom, pick, rand } from '@/utils/math';
 
@@ -30,11 +31,10 @@ const NAMES = ['Dilnoza opa', 'Sherzod aka', 'Malika', 'Jasur', 'Gulnora xola', 
 const len = (a: Vec2, b: Vec2) => Math.hypot(a.x - b.x, a.z - b.z);
 
 function fieldPoints(count: number): Vec2[] {
-  const r = blockRect(2, 7);
+  // inside the farm site (local frame: street on the north side, fields towards the back)
+  const L = SITES.find((l) => l.site?.kind === 'farm')!;
   const pts: Vec2[] = [];
-  for (let n = 0; n < count; n++) {
-    pts.push({ x: rand(Math.random, r.x0 + 14, r.x1 - 10), z: rand(Math.random, r.z0 + 30, r.z1 - 8) });
-  }
+  for (let n = 0; n < count; n++) pts.push(frameToWorld(L.ox, L.oz, L.rot, rand(Math.random, 8, 68), rand(Math.random, 56, 72)));
   return pts;
 }
 

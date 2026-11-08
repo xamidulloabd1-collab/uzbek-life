@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { DIRS, HALF, LANE, N, PITCH, ROAD, districtOf, isLightNode, nodePos, nodeValid, rightOf, segmentSpeed } from '@/game/world/cityLayout';
+import { NET, SPEED, baseH, type Edge } from '@/game/world/guzor/network';
 import { VEHICLES, VEHICLE_MAP, TRAFFIC_COLORS, categoryOf } from '@/config/vehicles';
 import type { VehicleCategory, VehicleSpec } from '@/types';
 
@@ -17,12 +17,11 @@ import { clamp, pick } from '@/utils/math';
 
 interface Car {
   mesh: THREE.Group;
-  k: number;
-  l: number;
-  d: number;
+  e: number;
+  dir: number;
   s: number;
   speed: number;
-  turning: { p0: THREE.Vector2; p1: THREE.Vector2; p2: THREE.Vector2; t: number; len: number; nd: number } | null;
+  turning: { p0: THREE.Vector2; p1: THREE.Vector2; p2: THREE.Vector2; t: number; len: number; ne: number; ndir: number; s0: number } | null;
   stun: number;
   x: number;
   z: number;
@@ -33,11 +32,26 @@ interface Car {
   color: string;
 }
 
-export interface TrafficCarInfo { ref: object; speed: number; specId: string; color: string; x: number; z: number; heading: number }
+const ZONE_WEIGHTS: Record<string, string> = { center: 'downtown', mahalla: 'mahalla', villas: 'apartments', industrial: 'industrial', village: 'village', fields: 'ring' };
 
-const START = ROAD / 2 + 1.5;
-const END = PITCH - ROAD / 2 - 1.5;
-const STOP = PITCH - ROAD / 2 - 4.5;
+/** junction radius: cars leave the straight lane this far from the node centre */
+function nodeR(id: number) {
+  const n = NET.nodes[id];
+  if (n.roundabout) return 22;
+  let w = 0;
+  for (const e of n.edges) w = Math.max(w, NET.edges[e].width);
+  return w / 2 + 2.5;
+}
+const endNode = (e: Edge, dir: number) => (dir > 0 ? e.b : e.a);
+const startNode = (e: Edge, dir: number) => (dir > 0 ? e.a : e.b);
+/** lane position on an edge, s measured from the start node in travel direction */
+function lanePos(e: Edge, dir: number, s: number) {
+  const p = NET.pointAt(e, dir > 0 ? s : e.len - s);
+  const tx = p.tx * dir, tz = p.tz * dir;
+  return { x: p.x - tz * e.lane, z: p.z + tx * e.lane, tx, tz };
+}
+
+export interface TrafficCarInfo { ref: object; speed: number; specId: string; color: string; x: number; z: number; heading: number }
 
 export class Traffic {
   readonly group = new THREE.Group();
@@ -58,19 +72,19 @@ export class Traffic {
       mesh.add(body, new THREE.Mesh(g.glass, lowMats.glass), new THREE.Mesh(g.dark, lowMats.dark), new THREE.Mesh(g.lights, lowMats.lights));
       mesh.visible = false;
       this.group.add(mesh);
-      this.pool.push({ mesh, k: 0, l: 0, d: 0, s: 0, speed: 0, turning: null, stun: 0, x: 0, z: 0, heading: 0, len: spec.dims.length, active: false, specId: spec.id, color: '#f2f2ef' });
+      this.pool.push({ mesh, e: 0, dir: 1, s: 0, speed: 0, turning: null, stun: 0, x: 0, z: 0, heading: 0, len: spec.dims.length, active: false, specId: spec.id, color: '#f2f2ef' });
     }
   }
 
-  /** 0: X green, 1: X yellow, 2: Z green, 3: Z yellow */
+  /** 0: group-0 green, 1: group-0 yellow, 2: group-1 green, 3: group-1 yellow */
   private updateLights(dt: number) {
     this.lightPhaseTime = (this.lightPhaseTime + dt) % 26;
     const t = this.lightPhaseTime;
     this.phase = t < 10 ? 0 : t < 13 ? 1 : t < 23 ? 2 : 3;
   }
 
-  private green(d: number) {
-    return (d % 2 === 0 && this.phase === 0) || (d % 2 === 1 && this.phase === 2);
+  private green(group: number) {
+    return (group === 0 && this.phase === 0) || (group === 1 && this.phase === 2);
   }
 
   /** loaded GLB models per spec (clone source); missing ones fall back to the procedural low-detail body */
@@ -115,11 +129,8 @@ export class Traffic {
   }
 
   /** weighted pick: district-appropriate categories, catalog/GLB models preferred, no twins nearby */
-  private chooseSpec(x: number, z: number): VehicleSpec {
-    const fx = Math.min(N - 1, Math.max(0, Math.floor((x + HALF) / PITCH)));
-    const fz = Math.min(N - 1, Math.max(0, Math.floor((z + HALF) / PITCH)));
-    const ring = Math.abs(x) > HALF - ROAD || Math.abs(z) > HALF - ROAD;
-    const w = ring ? DISTRICT_WEIGHTS.ring : DISTRICT_WEIGHTS[districtOf(fx, fz)];
+  private chooseSpec(x: number, z: number, e: Edge): VehicleSpec {
+    const w = DISTRICT_WEIGHTS[e.cls === 'highway' ? 'ring' : ZONE_WEIGHTS[e.zone] ?? 'ring'];
     const real = VEHICLES.filter((v) => v.modelUrl || this.models.has(v.id));
     const pool = real.length ? real : VEHICLES;
     let total = 0;
@@ -141,26 +152,26 @@ export class Traffic {
   private spawn(px: number, pz: number, minR: number, maxR: number) {
     const car = this.pool.find((c) => !c.active);
     if (!car) return;
-    for (let tries = 0; tries < 12; tries++) {
-      const k = Math.floor(Math.random() * (N + 1));
-      const l = Math.floor(Math.random() * (N + 1));
-      const d = Math.floor(Math.random() * 4);
-      if (!nodeValid(k + DIRS[d][0], l + DIRS[d][1])) continue;
-      const s = START + Math.random() * (STOP - START - 6);
-      const p = nodePos(k, l);
-      const [rx, rz] = rightOf(d);
-      const x = p.x + DIRS[d][0] * s + rx * LANE;
-      const z = p.z + DIRS[d][1] * s + rz * LANE;
-      const dist = Math.hypot(x - px, z - pz);
+    for (let tries = 0; tries < 14; tries++) {
+      const a = Math.random() * Math.PI * 2, r = minR + Math.random() * (maxR - minR);
+      const hit = NET.nearestRoad(px + Math.cos(a) * r, pz + Math.sin(a) * r, 40);
+      if (!hit || hit.e.cls === 'lane') continue;
+      const e = hit.e;
+      const dir = Math.random() < 0.5 ? 1 : -1;
+      const r0 = nodeR(startNode(e, dir)), r1 = nodeR(endNode(e, dir));
+      if (e.len - r0 - r1 < 8) continue;
+      const s = r0 + Math.random() * (e.len - r0 - r1 - 6);
+      const p = lanePos(e, dir, s);
+      const dist = Math.hypot(p.x - px, p.z - pz);
       if (dist < minR || dist > maxR) continue;
-      if (this.cars.some((c) => Math.hypot(c.x - x, c.z - z) < 12)) continue;
-      const spec = this.chooseSpec(x, z);
+      if (this.cars.some((c) => Math.hypot(c.x - p.x, c.z - p.z) < 12)) continue;
+      const spec = this.chooseSpec(p.x, p.z, e);
       car.specId = spec.id;
       car.len = spec.dims.length;
       car.color = pick(Math.random, TRAFFIC_COLORS);
       this.buildMesh(car);
       if (spec.modelUrl && !this.models.has(spec.id)) this.onNeedModel?.(spec.id);
-      Object.assign(car, { k, l, d, s, speed: segmentSpeed(k, l, d) * 0.7, turning: null, stun: 0, x, z, heading: Math.atan2(DIRS[d][0], DIRS[d][1]), active: true });
+      Object.assign(car, { e: e.id, dir, s, speed: SPEED[e.cls] * 0.7, turning: null, stun: 0, x: p.x, z: p.z, heading: Math.atan2(p.tx, p.tz), active: true });
       car.mesh.visible = true;
       this.cars.push(car);
       return;
@@ -183,10 +194,10 @@ export class Traffic {
     }
 
     for (const c of this.cars) {
-      const limit = segmentSpeed(c.k, c.l, c.d);
+      const e = NET.edges[c.e];
+      const limit = SPEED[e.cls];
       let desired = limit;
       const fx = Math.sin(c.heading), fz = Math.cos(c.heading);
-      // leader car / player ahead
       for (const o of this.cars) {
         if (o === c) continue;
         const dx = o.x - c.x, dz = o.z - c.z;
@@ -201,9 +212,10 @@ export class Traffic {
         if (along > 0 && along < 18 && lat < 1.6 + b.r) desired = Math.min(desired, Math.max(0, (along - 4 - b.r) * 1.1));
       }
       if (!c.turning) {
-        const endK = c.k + DIRS[c.d][0], endL = c.l + DIRS[c.d][1];
-        if (isLightNode(endK, endL) && !this.green(c.d) && c.s < STOP + 0.5 && c.s > STOP - 30) {
-          desired = Math.min(desired, Math.max(0, (STOP - c.s) * 0.7));
+        const en = endNode(e, c.dir);
+        const stop = e.len - nodeR(en) - 1.5;
+        if (NET.nodes[en].light && !this.green(NET.lightGroup(e, en)) && c.s < stop + 0.5 && c.s > stop - 30) {
+          desired = Math.min(desired, Math.max(0, (stop - c.s) * 0.7));
         }
       }
       if (c.stun > 0) {
@@ -225,22 +237,20 @@ export class Traffic {
         c.z = z;
         if (Math.hypot(tx, tz) > 1e-4) c.heading = Math.atan2(tx, tz);
         if (T.t >= 1) {
-          c.k += DIRS[c.d][0];
-          c.l += DIRS[c.d][1];
-          c.d = T.nd;
-          c.s = START;
+          c.e = T.ne;
+          c.dir = T.ndir;
+          c.s = T.s0;
           c.turning = null;
         }
       } else {
         c.s += c.speed * dt;
-        const p = nodePos(c.k, c.l);
-        const [rx, rz] = rightOf(c.d);
-        c.x = p.x + DIRS[c.d][0] * c.s + rx * LANE;
-        c.z = p.z + DIRS[c.d][1] * c.s + rz * LANE;
-        c.heading = Math.atan2(DIRS[c.d][0], DIRS[c.d][1]);
-        if (c.s >= END) this.beginTurn(c);
+        const p = lanePos(e, c.dir, Math.min(c.s, e.len));
+        c.x = p.x;
+        c.z = p.z;
+        c.heading = Math.atan2(p.tx, p.tz);
+        if (c.s >= e.len - nodeR(endNode(e, c.dir))) this.beginTurn(c);
       }
-      c.mesh.position.set(c.x, 0, c.z);
+      c.mesh.position.set(c.x, baseH(c.x, c.z) + 0.06, c.z);
       c.mesh.rotation.y = c.heading;
     }
 
@@ -256,24 +266,49 @@ export class Traffic {
   }
 
   private beginTurn(c: Car) {
-    const endK = c.k + DIRS[c.d][0], endL = c.l + DIRS[c.d][1];
-    const options: number[] = [];
-    for (let nd = 0; nd < 4; nd++) {
-      if (nd === (c.d + 2) % 4) continue;
-      if (nodeValid(endK + DIRS[nd][0], endL + DIRS[nd][1])) options.push(nd);
+    const e = NET.edges[c.e];
+    const nId = endNode(e, c.dir);
+    const node = NET.nodes[nId];
+    const din = lanePos(e, c.dir, e.len - nodeR(nId));
+    const all = node.edges.filter((id) => id !== e.id || node.edges.length === 1);
+    const roads = all.filter((id) => NET.edges[id].cls !== 'lane');
+    const options = roads.length ? roads : all;
+    let ne = e.id;
+    if (options.length) {
+      // prefer going straight on
+      const scored = options.map((id) => {
+        const x = NET.edges[id];
+        const q = nId === x.a ? x.pts[1] : x.pts[x.pts.length - 2];
+        const dx = q.x - node.x, dz = q.z - node.z, l = Math.hypot(dx, dz) || 1;
+        return { id, dot: (dx * din.tx + dz * din.tz) / l };
+      });
+      const straight = scored.reduce((a, b) => (b.dot > a.dot ? b : a));
+      ne = straight.dot > 0.8 && Math.random() < 0.55 ? straight.id : pick(Math.random, scored).id;
     }
-    const nd = options.length ? (Math.random() < 0.5 && options.includes(c.d) ? c.d : pick(Math.random, options)) : (c.d + 2) % 4;
-    const node = nodePos(endK, endL);
-    const [rx, rz] = rightOf(c.d);
-    const [nrx, nrz] = rightOf(nd);
+    const nx = NET.edges[ne];
+    const ndir = nx.a === nId && !(ne === e.id && nx.b === nId && c.dir < 0) ? 1 : -1;
+    const s0 = nodeR(nId);
+    const out = lanePos(nx, ndir, Math.min(s0, nx.len / 2));
     const p0 = new THREE.Vector2(c.x, c.z);
-    const p2 = new THREE.Vector2(node.x + DIRS[nd][0] * START + nrx * LANE, node.z + DIRS[nd][1] * START + nrz * LANE);
+    const p2 = new THREE.Vector2(out.x, out.z);
+    const turn = din.tx * out.tx + din.tz * out.tz;
     let p1: THREE.Vector2;
-    if (nd === c.d) p1 = p0.clone().add(p2).multiplyScalar(0.5);
-    else if (nd === (c.d + 2) % 4) p1 = new THREE.Vector2(node.x + DIRS[c.d][0] * 4, node.z + DIRS[c.d][1] * 4);
-    else p1 = new THREE.Vector2(node.x + rx * LANE + nrx * LANE, node.z + rz * LANE + nrz * LANE);
-    const len = p0.distanceTo(p1) + p1.distanceTo(p2);
-    c.turning = { p0, p1, p2, t: 0, len, nd };
+    if (node.roundabout) {
+      const mx = (p0.x + p2.x) / 2 - node.x, mz = (p0.y + p2.y) / 2 - node.z;
+      const ml = Math.hypot(mx, mz);
+      const ux = ml > 2 ? mx / ml : din.tz, uz = ml > 2 ? mz / ml : -din.tx;
+      p1 = new THREE.Vector2(node.x + ux * 26, node.z + uz * 26);
+    } else if (turn > 0.94) p1 = p0.clone().add(p2).multiplyScalar(0.5);
+    else if (turn < -0.9) p1 = new THREE.Vector2(node.x + din.tx * 4, node.z + din.tz * 4);
+    else {
+      // control point: where the incoming and outgoing lane lines meet
+      const den = din.tx * out.tz - din.tz * out.tx;
+      const t = ((p2.x - p0.x) * out.tz - (p2.y - p0.y) * out.tx) / (Math.abs(den) < 1e-4 ? 1e-4 : den);
+      p1 = new THREE.Vector2(p0.x + din.tx * t, p0.y + din.tz * t);
+      if (p1.distanceTo(p0) > 40) p1 = new THREE.Vector2(node.x, node.z);
+    }
+    const len = Math.max(1, p0.distanceTo(p1) + p1.distanceTo(p2));
+    c.turning = { p0, p1, p2, t: 0, len, ne, ndir, s0: Math.min(s0, nx.len / 2) };
   }
 
   nearestCar(x: number, z: number, maxD: number): TrafficCarInfo | null {

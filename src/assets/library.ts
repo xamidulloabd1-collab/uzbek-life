@@ -9,7 +9,7 @@
  *   vegetation/tree*.glb · vegetation/bush*.glb
  * Every GLB must have a sidecar `<name>.license.json`: { "author": "", "license": "", "source": "" }.
  */
-export type SlotKind = 'vehicle' | 'house' | 'gate' | 'lamp' | 'bench' | 'tree' | 'bush';
+export type SlotKind = 'vehicle' | 'house' | 'gate' | 'lamp' | 'bench' | 'tree' | 'bush' | 'building';
 
 export interface LibraryEntry {
   slot: string; // e.g. "vehicle:karvon", "house:house_a"

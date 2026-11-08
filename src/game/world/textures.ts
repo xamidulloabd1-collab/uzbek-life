@@ -881,6 +881,50 @@ export class TextureLib {
     return ft;
   }
 
+  /** older mahalla asphalt: no centre line, patches, dusty crumbling edges */
+  roadMahalla() {
+    return this.memo('road-mahalla', () => {
+      const S = this.S;
+      const [c, g] = canvas(S, S);
+      const rng = mulberry32(91);
+      g.fillStyle = '#45464a';
+      g.fillRect(0, 0, S, S);
+      noise(g, S, S, 26, rng);
+      for (let n = 0; n < 9; n++) {
+        g.fillStyle = `rgba(${rng() < 0.5 ? '28,29,31' : '70,70,72'},${0.35 + rng() * 0.3})`;
+        g.fillRect(S * (0.15 + rng() * 0.6), rng() * S, S * (0.06 + rng() * 0.18), S * (0.05 + rng() * 0.2));
+      }
+      const grd = g.createLinearGradient(0, 0, S, 0);
+      grd.addColorStop(0, 'rgba(160,140,105,0.95)');
+      grd.addColorStop(0.16, 'rgba(160,140,105,0)');
+      grd.addColorStop(0.84, 'rgba(160,140,105,0)');
+      grd.addColorStop(1, 'rgba(160,140,105,0.95)');
+      g.fillStyle = grd;
+      g.fillRect(0, 0, S, S);
+      return toTex(c);
+    });
+  }
+
+  /** industrial concrete slab road with expansion joints */
+  concreteRoad() {
+    return this.memo('road-concrete', () => {
+      const S = this.S;
+      const [c, g] = canvas(S, S);
+      const rng = mulberry32(92);
+      g.fillStyle = '#8f8c86';
+      g.fillRect(0, 0, S, S);
+      noise(g, S, S, 22, rng);
+      g.fillStyle = 'rgba(40,38,34,0.7)';
+      g.fillRect(S / 2 - 1, 0, 2, S);
+      for (let y = 0; y < S; y += S / 3) g.fillRect(0, y, S, 2);
+      for (let n = 0; n < 6; n++) {
+        g.fillStyle = 'rgba(60,55,45,0.25)';
+        g.fillRect(rng() * S, rng() * S, S * 0.2, S * 0.08);
+      }
+      return toTex(c);
+    });
+  }
+
   grassBlades() {
     return this.memo('grass-blades', () => {
       const S = 128;

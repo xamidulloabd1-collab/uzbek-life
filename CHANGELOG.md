@@ -64,3 +64,55 @@ Tekshiruv: tizim test GLB fayllari bilan oxirigacha sinaldi (pastga qarang). Ula
   - modellar faqat kerak bo‘lganda yuklanadi, bir marta yuklangani keshda qoladi.
 - **To‘xtab turgan mashinalar:** yaqinlashganda haqiqiy modelga almashadi.
 - **Avtosalon:** kategoriya filtri va litsenziya ma’lumoti; tanlangan mashina 3D ko‘rinishda haqiqiy GLB bilan chiqadi.
+
+# 0.9 — audit, litsenziya hujjatlari, logo
+- **G‘ildiraklar:** GLB mashinalarda g‘ildirak nomi va shakli bo‘yicha aniqlanadi, har burchakdan bittadan olinadi. O‘lchash mashinaning o‘z koordinatalarida bajariladi.
+- **Logo va ikonkalar:** favicon (SVG va ICO), iPhone ikonkasi, Android/PWA uchun ikonkalar va web manifest.
+- **Yangi hujjatlar:** ASSET_LICENSES.md, ASSET_INVENTORY.md, THIRD_PARTY_NOTICES.md, KNOWN_LIMITATIONS.md.
+
+# 0.10 — G‘uzor hududlari va joylar
+- **Tasdiqlangan joylar:** Musofir ota jome masjidi va ziyoratgohi (Amir Temur MFY, Chinobod ko‘chasi 4), Mirijanda ota maqbarasi (Mardtepa).
+- **Xotira maydoni:** stilizatsiya qilingan motamsaro ona va mangu olov; joylashuvi o‘ylab topilgan.
+- **Yangi hududlar:**
+  - zamonaviy turar-joy majmuasi (2 kvartal);
+  - villalar (2 kvartal);
+  - qurilish maydoni.
+- **Takrorlanishni kamaytirish:**
+  - mahalla yo‘llari eski asfaltda, sanoat zonasi yo‘llari beton plitada;
+  - panel uylar, zamonaviy uylar va hovli uylarida rang variantlari;
+  - mahalla devorlarida 4 xil rang.
+- **Xaritada:** joylar va hudud yozuvlari.
+- **Yangi hujjatlar:** LANDMARK_DISTRICT_INVENTORY.md, VEHICLE_INVENTORY.md, WORLD_ASSET_INVENTORY.md.
+
+
+# 0.11 — uzluksiz G‘uzor dunyosi (kvadrat to‘r olib tashlandi)
+- **Yangi dunyo modeli** (`src/game/world/guzor/network.ts`):
+  - asosiy yo‘llar, daryo va joylar foydalanuvchi suratlaridan olingan;
+  - mahalla ichidagi ko‘chalar har bir hudud yo‘nalishiga moslab generatsiya qilinadi;
+  - yo‘llar kesishgan joylarda haqiqiy tarmoq hosil bo‘ladi.
+- **Relyef:** adirlar, daryo o‘zani, rangli dalalar.
+- **Bo‘laklab yuklash:** uchastkalar 160 m bo‘laklarda faqat atrofga yuklanadi va uzoqlashganda o‘chiriladi.
+- **To‘qnashuv:** burilgan binolar uchun aylantirilgan to‘qnashuv qutilari; to‘qnashuvni olib tashlash imkoniyati.
+- **Transport:** yo‘l tarmog‘i bo‘ylab harakat, svetoforlar, aylanma chorraha; politsiya va piyodalar ham tarmoqda.
+- **Xarita va minixarita:** shu yo‘llar, daryo, uchastkalar va joylardan chiziladi.
+- **Yangi joylar:** hokimiyat, stadion, to‘yxona, mehmonxona, ferma va maktablar.
+
+
+# 0.12
+- **Ko‘kalam:** binolar orasidagi bo‘sh yerlarga hududiga qarab bog‘, buta, maysa; yer rangi bo‘laklarga bo‘lindi.
+- **Chorrahalar:** qoplama yo‘l rangiga moslandi.
+- **Tezlik:** yer va daraxtlar faqat kerak bo‘lganda quriladi; menyu 20,4 s → 15,2 s (dasturiy GPU).
+- **OpenStreetMap importeri:** `node scripts/import-osm.mjs map.osm`.
+- **Hujjat:** TEST_REPORT.md.
+
+
+# 0.13
+- **Mahalla ko‘chalari:** har mahallaga o‘z yo‘nalishi, egri ko‘chalar, berk ko‘chalar.
+- **3D modellar paneli:** Mulk muharriri va Dunyo muharriri (ishlab chiquvchi rejimi, siljitish, aylantirish, masshtab, yashirish, GLB bilan almashtirish, saqlash, orqaga qaytarish).
+- **Yangi hujjatlar:** OSM_DATA_SOURCES, LANDMARK_VERIFICATION, WORLD_EDITOR_GUIDE, REMAINING_LIMITATIONS.
+
+
+# 0.14
+- **Dunyo muharriri:** daraxt, chiroq, skameyka va qutilarni tahrirlash; hudud va tur filtrlari; guruhlash; Undo/Redo. Bino ko‘chirilganda yer balandligi va collision yangilanadi.
+- **Ko‘cha jihozlari:** piyodalar yo‘laklarida skameyka va chiqindi qutilari.
+- **Ishga tushish:** GLB kutubxonasi fonda yuklanadi; katalog so‘roviga vaqt chegarasi qo‘yildi.

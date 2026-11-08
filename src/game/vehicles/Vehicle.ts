@@ -74,26 +74,63 @@ export class Vehicle {
     root.position.set(-(b2.min.x + b2.max.x) / 2, -b2.min.y, -(b2.min.z + b2.max.z) / 2);
     const wheels: { node: THREE.Object3D; front: boolean; baseY: number }[] = [];
     const paint: THREE.MeshStandardMaterial[] = [];
+    // measure in the car's own frame (heading and position would distort world-space boxes)
+    const savedPos = m.root.position.clone(), savedRot = m.root.rotation.clone();
+    m.root.position.set(0, 0, 0);
+    m.root.rotation.set(0, 0, 0);
     m.root.add(root);
     m.root.updateMatrixWorld(true);
-    // wheels: outermost nodes whose name mentions wheel/tyre/rim; side from the position
-    const cands: THREE.Object3D[] = [];
+    // wheels: candidates by name, then by shape (round, near the ground, wheel-sized);
+    // one per corner (front-left, front-right, rear-left, rear-right), largest wins
+    const L = this.spec.dims.length;
+    const rootBox = new THREE.Box3().setFromObject(root);
+    const height = rootBox.max.y - rootBox.min.y;
+    const wheelLike = (o: THREE.Object3D) => {
+      const box = new THREE.Box3().setFromObject(o);
+      if (box.isEmpty()) return null;
+      const size = box.getSize(new THREE.Vector3());
+      const c = m.root.worldToLocal(box.getCenter(new THREE.Vector3()));
+      const dia = Math.max(size.y, size.z);
+      const round = Math.abs(size.y - size.z) < dia * 0.35;
+      const sized = dia > L * 0.1 && dia < L * 0.32;
+      const low = c.y - rootBox.min.y < height * 0.45;
+      return round && sized && low ? { c, dia } : null;
+    };
+    const named: THREE.Object3D[] = [];
     root.traverse((o) => {
-      if (/wheel|tire|tyre|rim/i.test(o.name) && !/steer|spare|well|arch|cover/i.test(o.name) && !cands.some((c) => isAncestor(c, o))) cands.push(o);
+      if (/wheel|tire|tyre|rim/i.test(o.name) && !/steer|spare|well|arch|cover|brake|caliper|disc/i.test(o.name) && !named.some((x) => isAncestor(x, o))) named.push(o);
     });
-    if (cands.length >= 4) {
-      for (const node of cands) {
-        const box = new THREE.Box3().setFromObject(node);
-        const c = box.getCenter(new THREE.Vector3());
-        const local = m.root.worldToLocal(c.clone());
+    const pickCorners = (list: THREE.Object3D[]) => {
+      const best = new Map<string, { node: THREE.Object3D; c: THREE.Vector3; dia: number }>();
+      for (const node of list) {
+        const w = wheelLike(node);
+        if (!w) continue;
+        const key = `${w.c.z > 0 ? 'f' : 'r'}${w.c.x > 0 ? 'l' : 'r'}`;
+        const cur = best.get(key);
+        if (!cur || w.dia > cur.dia) best.set(key, { node, ...w });
+      }
+      return best;
+    };
+    let corners = pickCorners(named);
+    if (corners.size < 4) {
+      const meshes: THREE.Object3D[] = [];
+      root.traverse((o) => (o as THREE.Mesh).isMesh && meshes.push(o));
+      const byShape = pickCorners(meshes);
+      if (byShape.size === 4) corners = byShape;
+    }
+    if (corners.size === 4) {
+      for (const { node, c } of corners.values()) {
         const pivot = new THREE.Object3D();
-        pivot.position.copy(local);
+        pivot.position.copy(c);
         m.root.add(pivot);
         pivot.updateMatrixWorld(true);
         pivot.attach(node);
-        wheels.push({ node: pivot, front: local.z > 0, baseY: 0 });
+        wheels.push({ node: pivot, front: c.z > 0, baseY: 0 });
       }
     }
+    m.root.position.copy(savedPos);
+    m.root.rotation.copy(savedRot);
+    m.root.updateMatrixWorld(true);
     root.traverse((o) => {
       const name = o.name.toLowerCase();
       const mesh = o as THREE.Mesh;
@@ -107,7 +144,7 @@ export class Vehicle {
     });
     paint.forEach((p) => p.color.set(this.owned.color));
     m.body.visible = false;
-    m.wheels.forEach((w) => (w.pivot.visible = wheels.length < 4));
+    m.wheels.forEach((w) => (w.pivot.visible = wheels.length !== 4));
     this.glb = { root, wheels, paint };
   }
 
