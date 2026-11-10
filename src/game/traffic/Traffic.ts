@@ -213,7 +213,8 @@ export class Traffic {
       }
       if (!c.turning) {
         const en = endNode(e, c.dir);
-        const stop = e.len - nodeR(en) - 1.5;
+        // behind the stop line (zebra + stop line sit just outside the junction box)
+        const stop = e.len - nodeR(en) - (NET.nodes[en].light ? 4.9 : 1.5);
         if (NET.nodes[en].light && !this.green(NET.lightGroup(e, en)) && c.s < stop + 0.5 && c.s > stop - 30) {
           desired = Math.min(desired, Math.max(0, (stop - c.s) * 0.7));
         }

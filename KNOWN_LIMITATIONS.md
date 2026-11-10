@@ -15,3 +15,7 @@
 13. **Ishga tushish vaqti.** Dasturiy GPU’da ≈ 20 s; haqiqiy qurilmada o‘lchanmagan.
 14. **3D modellar paneli.** Uylarni GLB bilan almashtirish endi faqat uyingiz atrofidagi bo‘lakda ishlaydi.
 15. **Tasdiqlanmagan joylar.** Motamsaro ona haykali va markaziy favvora G‘uzordagi joyi tasdiqlanmagani uchun qo‘yilmadi.
+
+16. **Interyerlar.** Hozircha ikkita: uy (barcha uy-joy mulklari uchun bitta umumiy interyer) va bozor do‘koni. Bank, restoran, avtosalon ichkarisi yo‘q.
+17. **Kiyim.** Faqat bosh kiyimi va ko‘zoynak almashadi. Tana kiyimlari uchun modulli personaj modeli kerak.
+18. **NPC.** Har bir NPC’ning shaxsiy kun tartibi yo‘q; faqat soatga qarab shahar gavjumligi o‘zgaradi.

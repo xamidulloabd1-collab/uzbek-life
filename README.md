@@ -60,3 +60,10 @@ Dunyo uzluksiz: asosiy yo‘llar, G‘uzordaryo va joylar foydalanuvchi yuborgan
 
 ## Tez ishga tushirish (o‘rnatishsiz)
 `OYNASH-uzbek-life.html` faylini brauzerda oching (Chrome, Edge, Safari yoki Firefox).
+
+## Foto materiallar (ixtiyoriy, CC0)
+```
+npm run assets:fetch
+npm run dev
+```
+ambientCG’dan asfalt, beton, suvoq, tuproq, maysa va boshqa materiallarni yuklaydi. O‘yin ularni avtomatik ishlatadi. Bitta HTML faylli versiyaga ular kirmaydi.

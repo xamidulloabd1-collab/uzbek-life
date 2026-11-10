@@ -1,3 +1,4 @@
+import { eventMods } from '@/systems/events/worldEvents';
 import type { OwnedVehicle } from '@/types';
 import { useGame } from '@/stores/gameStore';
 import { VEHICLE_MAP, isValidPlate, normalizePlate, randomPlate } from '@/config/vehicles';
@@ -123,12 +124,12 @@ export function refuel(vuid: string): boolean {
     s.notify('Bak to‘la', 'info');
     return false;
   }
-  const affordable = Math.min(need, (s.cash + s.bank) / ECONOMY.fuelPricePerLiter);
+  const affordable = Math.min(need, (s.cash + s.bank) / (ECONOMY.fuelPricePerLiter * eventMods.fuel));
   if (affordable < 0.5) {
     s.notify('Yoqilg‘i uchun pul yetarli emas', 'bad');
     return false;
   }
-  const cost = Math.round(affordable * ECONOMY.fuelPricePerLiter);
+  const cost = Math.round(affordable * (ECONOMY.fuelPricePerLiter * eventMods.fuel));
   if (!spend(cost, `AYOQSH: ${affordable.toFixed(1)} l`)) return false;
   patch(vuid, { fuel: v.fuel + affordable });
   s.notify(`${affordable.toFixed(1)} litr quyildi · ${formatSom(cost)}`, 'good');

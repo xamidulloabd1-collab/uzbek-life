@@ -594,6 +594,18 @@ export class World {
     for (let cx = cx0; cx <= cx1; cx++) for (let cz = cz0; cz <= cz1; cz++) this.terrainTodo.add(`${cx},${cz}`);
   }
 
+  /** photographic ground (ambientCG) under the existing field / zone vertex colours */
+  applyTerrainPhoto(color: THREE.Texture, normal: THREE.Texture | null, rough: THREE.Texture | null) {
+    const m = this.terrainMat;
+    m.map = color;
+    m.normalMap = normal;
+    if (rough) {
+      m.roughnessMap = rough;
+      m.roughness = 1;
+    }
+    m.needsUpdate = true;
+  }
+
   private buildTerrainChunk(key: string) {
     this.terrainTodo.delete(key);
     const [cx, cz] = key.split(',').map(Number);
@@ -1025,6 +1037,7 @@ export class World {
 
   private buildTrafficLights() {
     const pts: { x: number; z: number; rot: number; axis: number }[] = [];
+    const marks = new GeoBuilder();
     for (const n of NET.nodes) {
       if (!n.light) continue;
       for (const id of n.edges) {
@@ -1034,9 +1047,25 @@ export class World {
         const l = Math.hypot(dx, dz) || 1;
         dx /= l; dz /= l;
         const w = e.width / 2;
-        pts.push({ x: n.x + dx * (w + 2.6) + dz * (w + 1.2), z: n.z + dz * (w + 2.6) - dx * (w + 1.2), rot: Math.atan2(dx, dz), axis: NET.lightGroup(e, n.id) });
+        // pole beside the stop line, on the right of the approaching lane, facing the approaching traffic
+        const trimN = Math.max(...n.edges.map((x) => NET.edges[x].width)) / 2 + 0.6;
+        pts.push({ x: n.x + dx * (trimN + 4.6) + dz * (w + 0.9), z: n.z + dz * (trimN + 4.6) - dx * (w + 0.9), rot: Math.atan2(dx, dz), axis: NET.lightGroup(e, n.id) });
+        const y = baseH(n.x + dx * (trimN + 2), n.z + dz * (trimN + 2)) + 0.095;
+        const rot = Math.atan2(dx, dz);
+        // zebra crossing at the mouth of the junction (stripes across the whole road)
+        for (let k = -w + 0.6; k <= w - 0.6; k += 1.0) {
+          const g = new THREE.BoxGeometry(0.5, 0.02, 3).rotateY(rot);
+          g.translate(n.x + dx * (trimN + 2) + dz * k, y, n.z + dz * (trimN + 2) - dx * k);
+          marks.add('white', g);
+        }
+        // stop line across the approaching lane
+        const sl = new THREE.BoxGeometry(w, 0.02, 0.45).rotateY(rot);
+        sl.translate(n.x + dx * (trimN + 4.2) + dz * (w / 2), y, n.z + dz * (trimN + 4.2) - dx * (w / 2));
+        marks.add('white', sl);
       }
     }
+    if (!this.mats.white) this.mats.white = new THREE.MeshStandardMaterial({ color: '#f2f2ee', roughness: 0.7 });
+    this.group.add(marks.build(this.mats, { cast: false, receive: true }));
     const pole = new THREE.CylinderGeometry(0.08, 0.1, 4.4, 6).translate(0, 2.2, 0);
     const box = new THREE.BoxGeometry(0.4, 1.15, 0.3).translate(0, 4.3, 0);
     const poles = new THREE.InstancedMesh(pole, this.mats.darkmetal, pts.length);

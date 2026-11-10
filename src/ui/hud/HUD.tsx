@@ -99,15 +99,18 @@ function MissionCard() {
               </svg>
             )}
             {h.missionDistance !== null && <span>{formatDistance(h.missionDistance)}</span>}
+            {h.navEta !== null && <span>· ~{Math.max(1, Math.round(h.navEta / 60))} daq</span>}
             <span>· {step.kind === 'work' ? 'ish' : step.kind === 'pickup' ? 'olish' : 'topshirish'}</span>
             {h.prompt && <span className="blocked">{h.prompt}</span>}
           </div>
+          {h.navTurn && <div className="meta"><span>{h.navTurn}</span></div>}
           {h.missionHold > 0 && <div className="hold"><i style={{ width: `${Math.min(100, h.missionHold * 100)}%` }} /></div>}
         </>
       ) : (
         <>
           <div className="title">GPS MANZIL</div>
-          <div className="step">{formatDistance(wp ?? 0)}</div>
+          <div className="step">{formatDistance(wp ?? 0)}{h.navEta !== null ? ` · ~${Math.max(1, Math.round(h.navEta / 60))} daq` : ''}</div>
+          {h.navTurn && <div className="meta"><span>{h.navTurn}</span></div>}
         </>
       )}
     </div>
@@ -115,6 +118,7 @@ function MissionCard() {
 }
 
 export default function HUD() {
+  const fadeOn = useGame((st) => st.fade);
   const cash = useGame((s) => s.cash);
   const bank = useGame((s) => s.bank);
   const minutes = useGame((s) => s.minutes);
@@ -131,6 +135,7 @@ export default function HUD() {
   const energy = useGame((s) => s.energy);
   return (
     <div className="hud">
+      <div className={`screen-fade ${fadeOn ? 'on' : ''}`} />
       <div className="tl">
         <div className="chip status">
           <div className="name">Siz</div>

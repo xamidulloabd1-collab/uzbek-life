@@ -22,3 +22,21 @@ Litsenziyali GLB fayllar `public/assets/vehicles/<kategoriya>/<id>/` papkasiga q
 - Model saytlari qayta tekshirildi: tarmoq ruxsati yo‘q (HTTP 000).
 - GitHub’da «chevrolet gltf» bo‘yicha 0 natija.
 - Real model qo‘shilmadi. Original mashinalar vaqtinchalik model sifatida qoldi.
+
+
+## 0.18 — o‘yindagi nomlar
+
+O‘yin uchun o‘ylab topilgan brend: **Sarbon Motors** (2025).
+
+| ID | Nomi |
+|---|---|
+| lola | Sarbon S3 |
+| chumchuq | Sarbon City |
+| zarafshon | Sarbon S5 |
+| bahor | Sarbon S4 Classic |
+| amir | Sarbon S7 |
+| karvon | Sarbon Van |
+| qoya | Sarbon X3 |
+| burgut | Sarbon X5 |
+
+Rasmiy litsenziyali modellar bo‘lmagani uchun Chevrolet va boshqa real brend nomlari ishlatilmagan. ID’lar o‘zgarmagan, shuning uchun eski saqlangan o‘yinlar ishlaydi.

@@ -26,6 +26,8 @@ export class Player {
   onStep: (() => void) | null = null;
   private procedural = new THREE.Group();
   private mixer: THREE.AnimationMixer | null = null;
+  /** loaded character + clips, cloned for visible NPCs such as taxi passengers */
+  avatarSource: { scene: THREE.Object3D; idle: THREE.AnimationClip; walk: THREE.AnimationClip; scale: number } | null = null;
   private actions: { idle: THREE.AnimationAction; walk: THREE.AnimationAction; run: THREE.AnimationAction } | null = null;
   private weights = { idle: 1, walk: 0, run: 0 };
   hasAvatar = false;
@@ -131,6 +133,7 @@ export class Player {
     if (!idle || !walk || !run) return false;
     this.mixer = new THREE.AnimationMixer(model);
     this.actions = { idle: this.mixer.clipAction(idle), walk: this.mixer.clipAction(walk), run: this.mixer.clipAction(run) };
+    this.avatarSource = { scene: model, idle, walk, scale: model.scale.x };
     for (const a of Object.values(this.actions)) {
       a.play();
       a.setEffectiveWeight(0);
@@ -153,6 +156,64 @@ export class Player {
     this.group.add(model);
     this.hasAvatar = true;
     return true;
+  }
+
+  private accessories = Object.assign(new THREE.Group(), { name: 'accessories' });
+  /** do‘ppi / cap and sunglasses as real meshes on the head bone (sized in metres whatever the rig scale) */
+  setAccessories(o: { hat: string; glasses: boolean }) {
+    const head = this.bones.Head;
+    this.accessories.removeFromParent();
+    this.accessories.clear();
+    if (!head) return;
+    head.updateWorldMatrix(true, false);
+    const ws = new THREE.Vector3();
+    head.getWorldScale(ws);
+    const k = 1 / (ws.x || 1);
+    const g = this.accessories;
+    if (o.hat === 'doppi' || o.hat === 'doppi-oq') {
+      const c = document.createElement('canvas');
+      c.width = 256; c.height = 64;
+      const x = c.getContext('2d')!;
+      x.fillStyle = o.hat === 'doppi' ? '#151515' : '#f2efe6';
+      x.fillRect(0, 0, 256, 64);
+      x.strokeStyle = o.hat === 'doppi' ? '#f2efe6' : '#1d3f6e';
+      x.lineWidth = 3;
+      for (let i = 0; i < 4; i++) {
+        const cx = 32 + i * 64;
+        x.beginPath(); x.moveTo(cx - 14, 40); x.quadraticCurveTo(cx, 6, cx + 14, 40); x.stroke();
+        x.beginPath(); x.arc(cx, 44, 5, 0, Math.PI * 2); x.stroke();
+      }
+      const t = new THREE.CanvasTexture(c);
+      t.colorSpace = THREE.SRGBColorSpace;
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(0.108, 0.118, 0.085, 4, 1, false), [new THREE.MeshStandardMaterial({ map: t, roughness: 0.85 }), new THREE.MeshStandardMaterial({ color: o.hat === 'doppi' ? '#151515' : '#f2efe6', roughness: 0.85 })]);
+      m.rotation.y = Math.PI / 4;
+      m.position.y = 0.2;
+      m.scale.setScalar(1.12);
+      g.add(m);
+    } else if (o.hat === 'kepka') {
+      const mat = new THREE.MeshStandardMaterial({ color: '#2a4a7a', roughness: 0.8 });
+      const crown = new THREE.Mesh(new THREE.SphereGeometry(0.11, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), mat);
+      crown.position.y = 0.12;
+      crown.scale.set(1, 0.75, 1.05);
+      const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.01, 20, 1, false, -Math.PI / 2, Math.PI), mat);
+      brim.position.set(0, 0.125, 0.1);
+      brim.scale.set(1.1, 1, 1);
+      g.add(crown, brim);
+    }
+    if (o.glasses) {
+      const lens = new THREE.MeshStandardMaterial({ color: '#0d0d0f', roughness: 0.08, metalness: 0.4 });
+      for (const sx of [-0.034, 0.034]) {
+        const l = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.006, 18).rotateX(Math.PI / 2), lens);
+        l.position.set(sx, 0.075, 0.092);
+        g.add(l);
+      }
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.006, 0.006), lens);
+      bar.position.set(0, 0.08, 0.094);
+      g.add(bar);
+    }
+    g.scale.setScalar(k);
+    g.traverse((o2) => ((o2 as THREE.Mesh).castShadow = true));
+    head.add(g);
   }
 
   place(x: number, z: number, heading: number) {

@@ -11,11 +11,11 @@ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 const GradeShader = {
   uniforms: {
     tDiffuse: { value: null },
-    contrast: { value: 1.06 },
-    saturation: { value: 1.12 },
+    contrast: { value: 1.03 },
+    saturation: { value: 0.96 },
     gain: { value: new THREE.Vector3(1.03, 1.0, 0.96) },
     lift: { value: new THREE.Vector3(0.0, 0.006, 0.016) },
-    vignette: { value: 0.22 },
+    vignette: { value: 0.12 },
   },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
   fragmentShader: `uniform sampler2D tDiffuse; uniform float contrast; uniform float saturation; uniform vec3 gain; uniform vec3 lift; uniform float vignette; varying vec2 vUv;
@@ -86,8 +86,8 @@ export class PostFX {
     }
     if (this.grade) {
       const u = this.grade.uniforms;
-      u.saturation.value = 1.12 - night * 0.2 - rain * 0.22;
-      u.contrast.value = 1.06 - rain * 0.04;
+      u.saturation.value = 0.96 - night * 0.18 - rain * 0.2;
+      u.contrast.value = 1.03 - rain * 0.03;
       (u.gain.value as THREE.Vector3).set(1.03 - night * 0.07, 1.0 - night * 0.02, 0.96 + night * 0.09);
       (u.lift.value as THREE.Vector3).set(0, 0.006 + night * 0.002, 0.016 + night * 0.012);
     }

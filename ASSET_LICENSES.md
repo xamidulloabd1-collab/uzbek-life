@@ -16,3 +16,4 @@ Litsenziyasi tasdiqlanmagan asset buildga kiritilmaydi. `scripts/scan-vehicles.m
 **Brendlar haqida.** CC BY yoki Royalty-Free litsenziya faqat 3D modelning mualliflik huquqini qamraydi. Chevrolet, Toyota, BMW va boshqa brendlarning nomi, logotipi va dizayni ularning egalariga tegishli. Bunday modellarni rasmiy, ishlab chiqaruvchi litsenziyalagan asset sifatida ko‘rsatmang. Tijorat relizidan oldin yurist bilan maslahatlashing.
 
 | OpenStreetMap ma’lumotlari (bitta joy koordinatasi; importer orqali kelajakdagi ko‘chalar) | ODbL 1.0 | ruxsat | ruxsat (umumiy ma’lumotlar bazasi share-alike) | «© OpenStreetMap contributors» shart | ishlatilmoqda / importer tayyor |
+| @pmndrs/assets: sunrise/sunset/night HDRI, bulut teksturasi | CC0 1.0 | ruxsat | ruxsat | shart emas | ishlatilmoqda (0.15) |

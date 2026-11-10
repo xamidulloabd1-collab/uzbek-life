@@ -47,6 +47,13 @@ export interface GameStore {
   /** 0–100, drops over time, restored by eating */
   energy: number;
   businessLevels: Record<string, number>;
+  achievements: string[];
+  /** clothing: owned items and what is worn */
+  wardrobe: string[];
+  outfit: { hat: string; glasses: boolean };
+  /** screen fade for entering / leaving interiors */
+  fade: boolean;
+  events: { title: string; desc: string; left: number; place: boolean }[];
   setPanel: (p: PanelId, arg?: string | null) => void;
   notify: (text: string, kind?: Notification['kind']) => void;
   dismiss: (id: string) => void;
@@ -72,6 +79,8 @@ export const INITIAL_HUD: HudState = {
   missionDistance: null,
   missionHold: 0,
   missionArrow: null,
+  navEta: null,
+  navTurn: null,
   waypointDistance: null,
   interaction: null,
   vehicleAction: null,
@@ -109,6 +118,11 @@ export const useGame = create<GameStore>((set, get) => ({
   wanted: 0,
   energy: 100,
   businessLevels: {},
+  achievements: [],
+  events: [],
+  wardrobe: [],
+  outfit: { hat: 'none', glasses: false },
+  fade: false,
   setPanel: (panel, arg = null) => set({ panel, panelArg: arg }),
   notify: (text, kind = 'info') => {
     const n: Notification = { id: uid(), text, kind, at: performance.now() };

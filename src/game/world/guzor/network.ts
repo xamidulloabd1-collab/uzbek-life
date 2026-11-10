@@ -191,6 +191,7 @@ class Network {
     const t0 = performance.now();
     this.buildGraph(rng);
     this.indexEdges();
+    this.dropParallelDuplicates();
     this.placeSites();
     this.markJunctions();
     this.placeLots(rng);
@@ -198,7 +199,7 @@ class Network {
     this.placeInfill(rng);
     this.stats.ms = Math.round(performance.now() - t0);
   }
-  stats = { ms: 0 };
+  stats = { ms: 0, dupesRemoved: 0 };
 
   // ------------------------------------------------ graph
   private buildGraph(rng: RNG) {
@@ -414,7 +415,7 @@ class Network {
   }
 
   /** nearest road point within maxD (≤ 30 m reliable) */
-  nearestRoad(x: number, z: number, maxD = 30) {
+  nearestRoad(x: number, z: number, maxD = 30, skip = -1) {
     const C = Network.EC;
     let best: { e: Edge; dist: number; s: number; px: number; pz: number } | null = null;
     const r = Math.ceil(maxD / C);
@@ -425,7 +426,7 @@ class Network {
         const l = this.eGrid.get(`${gx},${gz}`);
         if (!l) continue;
         for (const id of l) {
-          if (checked.has(id)) continue;
+          if (checked.has(id) || id === skip) continue;
           checked.add(id);
           const e = this.edges[id];
           for (let k = 0; k < e.pts.length - 1; k++) {
@@ -590,6 +591,24 @@ class Network {
     for (const n of this.nodes) n.edges = n.edges.filter((id) => remap.has(id)).map((id) => remap.get(id)!);
     for (const l of this.lots) if (remap.has(l.edge)) l.edge = remap.get(l.edge)!;
     this.indexEdges();
+  }
+
+  /** remove generated streets that run alongside a main road (they looked like doubled, overlapping roads) */
+  private dropParallelDuplicates() {
+    const dead = new Set<number>();
+    for (const e of this.edges) {
+      if (e.major || e.alley || e.len < 12) continue;
+      let near = 0, tot = 0;
+      for (let s = 6; s < e.len - 6; s += 6) {
+        const p = this.pointAt(e, s);
+        tot++;
+        const r = this.nearestRoad(p.x, p.z, 18, e.id);
+        if (r && r.e.major && r.dist < r.e.width / 2 + e.width / 2 + 4) near++;
+      }
+      if (tot && near / tot > 0.6) dead.add(e.id);
+    }
+    if (dead.size) this.removeEdges(dead);
+    this.stats.dupesRemoved = dead.size;
   }
 
   /** traffic lights where two or more main roads meet inside town; the A380/M39 junction is a roundabout */
@@ -786,7 +805,11 @@ export function zoneLabel(x: number, z: number) {
 export const NET = new Network();
 
 /** height the player / cars stand on: road deck, lot plinth or terrain */
+/** flat floors of interiors (they stand outside the map) */
+export const INTERIOR_FLOORS: { x0: number; z0: number; x1: number; z1: number; y: number }[] = [];
+
 export function groundAt(x: number, z: number) {
+  for (const f of INTERIOR_FLOORS) if (x >= f.x0 && x <= f.x1 && z >= f.z0 && z <= f.z1) return f.y;
   const r = NET.nearestRoad(x, z, 12);
   if (r) {
     if (r.dist < r.e.width / 2 + 0.6) return baseH(x, z) + 0.06;

@@ -116,3 +116,34 @@ Tekshiruv: tizim test GLB fayllari bilan oxirigacha sinaldi (pastga qarang). Ula
 - **Dunyo muharriri:** daraxt, chiroq, skameyka va qutilarni tahrirlash; hudud va tur filtrlari; guruhlash; Undo/Redo. Bino ko‘chirilganda yer balandligi va collision yangilanadi.
 - **Ko‘cha jihozlari:** piyodalar yo‘laklarida skameyka va chiqindi qutilari.
 - **Ishga tushish:** GLB kutubxonasi fonda yuklanadi; katalog so‘roviga vaqt chegarasi qo‘yildi.
+
+
+# 0.15
+- **Yorug‘lik:** vaqtga qarab CC0 HDRI (tong, shom, tun).
+- **Osmon:** bulut qatlami.
+- **Rang:** tabiiyroq ranglar (to‘yinganlik kamaytirildi).
+- **Grafika:** Yuqori va Ultra’da 1024 px teksturalar; MX350 va Iris Xe uchun «O‘rta» preset.
+- **O‘yin jarayoni:** yutuqlar, joylarni kashf etish, tasodifiy voqealar, «Yutuqlar» paneli.
+- **Saqlash:** yutuqlar saqlanadi; katta xarita koordinatalari ±4000 m gacha.
+
+
+# 0.16
+- **Interyerlar:** uy va bozor do‘koni, kirish/chiqishda ekran qorayishi.
+- **Kiyim:** do‘ppi, kepka va ko‘zoynak — do‘konda sotiladi, kiyim javonida almashtiriladi, saqlanadi.
+- **Ish vaqtlari:** xizmatlar soatga qarab ochiladi va yopiladi.
+- **Shahar ritmi:** transport va piyodalar soni soatga qarab o‘zgaradi.
+
+
+# 0.17
+- **Yangi interyerlar:** bank, osh markazi, idora, avtoservis, avtosalon. Barchasining ichida ishlaydigan amallar bor.
+- **Kamera:** interyerda xonadan chiqib ketmaydi.
+- **Foto PBR materiallar:** `npm run assets:fetch` (ambientCG CC0) va o‘yinda avtomatik ulanadi.
+- **Hujjatlar:** NETWORK_ACCESS.md, ASSET_MANIFEST.md.
+
+
+# 0.18
+- **Taksi:** mijoz 3D dunyoda ko‘rinadi.
+- **GPS:** yo‘l tarmog‘i bo‘yicha A* navigatsiya (marshrut chizig‘i, ETA, burilishlar, qayta hisoblash).
+- **Chorrahalar:** svetoforlar qayta joylashtirildi; zebra va to‘xtash chiziqlari.
+- **Yo‘llar:** 107 ta takroriy ko‘cha olib tashlandi.
+- **Mashina nomlari:** Sarbon Motors.

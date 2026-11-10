@@ -12,7 +12,9 @@ import { pick, randInt } from '@/utils/math';
 export const VEHICLES: VehicleSpec[] = [
   {
     id: 'lola',
-    name: 'Lola',
+    name: 'Sarbon S3',
+    manufacturer: 'Sarbon Motors',
+    year: 2025,
     niche: 'Shahar sedani',
     description: 'Arzon, chidamli va ta’mirlash oson. G‘uzor ko‘chalarida eng ko‘p uchraydigan mashina.',
     body: 'sedan',
@@ -26,7 +28,9 @@ export const VEHICLES: VehicleSpec[] = [
   },
   {
     id: 'chumchuq',
-    name: 'Chumchuq',
+    name: 'Sarbon City',
+    manufacturer: 'Sarbon Motors',
+    year: 2025,
     niche: 'Shahar hetchbegi',
     description: 'Kichkina, tejamkor, tor mahalla ko‘chalarida ham bemalol buriladi.',
     body: 'hatch',
@@ -40,7 +44,9 @@ export const VEHICLES: VehicleSpec[] = [
   },
   {
     id: 'zarafshon',
-    name: 'Zarafshon',
+    name: 'Sarbon S5',
+    manufacturer: 'Sarbon Motors',
+    year: 2025,
     niche: 'Oilaviy sedan',
     description: 'Keng yukxona va baland shift. Oilaviy safarlar va taksi uchun eng mashhur tanlov.',
     body: 'sedan',
@@ -54,7 +60,9 @@ export const VEHICLES: VehicleSpec[] = [
   },
   {
     id: 'bahor',
-    name: 'Bahor',
+    name: 'Sarbon S4 Classic',
+    manufacturer: 'Sarbon Motors',
+    year: 2025,
     niche: 'Klassik sedan',
     description: 'Vaqt sinovidan o‘tgan muvozanatli sedan: yumshoq yurish, oson boshqaruv.',
     body: 'sedan',
@@ -68,7 +76,9 @@ export const VEHICLES: VehicleSpec[] = [
   },
   {
     id: 'amir',
-    name: 'Amir',
+    name: 'Sarbon S7',
+    manufacturer: 'Sarbon Motors',
+    year: 2025,
     niche: 'Biznes sedan',
     description: 'Uzun, past va tez. Rahbarlar va VIP-taksi haydovchilarining tanlovi.',
     body: 'sedan',
@@ -82,7 +92,9 @@ export const VEHICLES: VehicleSpec[] = [
   },
   {
     id: 'karvon',
-    name: 'Karvon',
+    name: 'Sarbon Van',
+    manufacturer: 'Sarbon Motors',
+    year: 2025,
     niche: 'Mikroavtobus',
     description: 'Kichik, ammo sig‘imli. Bozorchilar, kuryerlar va marshrutkachilarning sodiq yordamchisi.',
     body: 'van',
@@ -96,7 +108,9 @@ export const VEHICLES: VehicleSpec[] = [
   },
   {
     id: 'qoya',
-    name: 'Qoya',
+    name: 'Sarbon X3',
+    manufacturer: 'Sarbon Motors',
+    year: 2025,
     niche: 'Ixcham krossover',
     description: 'Baland klirens va to‘rt kishilik qulaylik. Shahar va qishloq yo‘llari uchun.',
     body: 'crossover',
@@ -110,7 +124,9 @@ export const VEHICLES: VehicleSpec[] = [
   },
   {
     id: 'burgut',
-    name: 'Burgut',
+    name: 'Sarbon X5',
+    manufacturer: 'Sarbon Motors',
+    year: 2025,
     niche: 'O‘rta SUV',
     description: 'Kuchli, keng va xavfsiz. Uzoq safar va katta oila uchun eng yaxshi tanlov.',
     body: 'suv',

@@ -235,3 +235,5 @@ table.keys td:first-child { color: var(--muted); }
 .lockgame .track { position: relative; height: 14px; border-radius: 7px; background: rgba(237,230,216,0.12); margin: 10px 0 8px; overflow: hidden; }
 .lockgame .zone { position: absolute; top: 0; bottom: 0; background: rgba(79,176,109,0.75); }
 .lockgame .needle { position: absolute; top: -2px; bottom: -2px; width: 4px; margin-left: -2px; background: var(--plaster); box-shadow: 0 0 6px rgba(0,0,0,0.6); }
+
+.screen-fade{position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;transition:opacity .28s ease;z-index:60}.screen-fade.on{opacity:1}

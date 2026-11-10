@@ -12,7 +12,8 @@
     "preview": "vite preview --host",
     "vehicles:scan": "node scripts/scan-vehicles.mjs",
     "predev": "node scripts/scan-vehicles.mjs",
-    "prebuild": "node scripts/scan-vehicles.mjs"
+    "prebuild": "node scripts/scan-vehicles.mjs",
+    "assets:fetch": "node scripts/fetch-assets.mjs"
   },
   "dependencies": {
     "react": "18.3.1",
@@ -25,6 +26,7 @@
     "@types/react-dom": "18.3.1",
     "@types/three": "0.170.0",
     "@vitejs/plugin-react": "4.3.3",
+    "fflate": "^0.8.2",
     "typescript": "5.6.3",
     "vite": "5.4.11",
     "vite-plugin-singlefile": "2.0.3"

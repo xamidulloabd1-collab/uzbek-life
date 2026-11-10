@@ -91,3 +91,92 @@ Barcha o‘lchovlar shu ishlab chiqish muhitida, **dasturiy GPU (SwiftShader, he
 - Konsol xatolari: yo‘q (4 ta sessiya).
 - Init bosqichlari: katalog 2,3 s · shahar 3,5 s · osmon 0,3 s · personaj 0,26 s · kutubxona 0,003 s (fonda).
 - Haqiqiy qurilmada FPS va yuklanish vaqti o‘lchanmagan.
+
+
+# 0.15 — realizm va o‘yin jarayoni
+
+| Vazifa | Holati | Izoh |
+|---|---|---|
+| TurboSquid / Poly Haven / ambientCG / OpenGameArt / Sketchfab modellari | **Blocked** | Barchasi tarmoq ruxsati yo‘qligi sabab ochilmadi (HTTP 000) |
+| Ruxsat etilgan manba: npm `@pmndrs/assets` (CC0) | **Completed** | Uchta HDRI (quyosh chiqishi, botishi, tun) va bulut teksturasi qo‘shildi |
+| Vaqtga qarab yorug‘lik va aks-sado | **Completed** | Kun, tong, shom va tun uchun alohida muhit xaritasi; sinovda 4 tasi yuklandi, shomga almashish ko‘rildi |
+| Bulut qatlami | **Completed** | Real bulut suratidan billbordlar; bulutli va yomg‘irli havoda zichlashadi |
+| Rang tuzatish | **Completed** | To‘yinganlik 1,12 → 0,96, kontrast 1,06 → 1,03, vinyetka 0,22 → 0,12 (multfilmdek yorqinlik kamaydi) |
+| Teksturalar aniqligi | **Completed** | Yuqori va Ultra’da 1024 px |
+| Noutbuk GPU’sini aniqlash | **Completed** | MX350 va Iris Xe → «O‘rta» |
+| Yutuqlar | **Completed** | 12 ta yutuq va 6 ta joyni kashf etish, pul mukofoti bilan; yutuqlar saqlanadi (sinovda tasdiqlandi) |
+| Tasodifiy voqealar | **Completed** | Yo‘lda qolgan haydovchi, yo‘qolgan hamyon, bozor chegirmasi, to‘y mavsumi, benzin narxi; narxlar tegishli tizimlarga ulangan. Sinov: voqea joyiga borilganda +120 000 so‘m tushdi |
+| Yangi «Yutuqlar» paneli | **Completed** | |
+| Fotorealistik mashinalar, binolar, personaj | **Qilinmadi** | Litsenziyali modellar olib bo‘lmadi; protsedural modellar qoldi |
+| React Three Fiber / Rapier’ga o‘tish | **Qilinmadi (ataylab)** | Mavjud Three.js arxitekturasi ishlayapti; ko‘chirish mavjud tizimlarni buzar edi |
+| Interyerlar, kiyim tanlash, NPC kun tartibi | **Qilinmadi** | |
+
+## 0.15 sinovlari (dasturiy GPU)
+- Tip tekshiruvi va ikkala build xatosiz.
+- Konsol xatolari: yo‘q. Faqat Chrome’ning `willReadFrequently` haqidagi ogohlantirishi bor.
+- Kun, shom, tun va bulutli havo skrinshotlari olindi.
+- Musofir ota masjidiga borilganda `visit-mosque` yutug‘i ochildi (+30 000 so‘m) va saqlashga yozildi.
+
+
+# 0.16 — interyerlar, kiyim, shahar ritmi
+
+## Yakuniy jadval
+| Funksiya | Oldingi holat | Yangi holat | Isbot |
+|---|---|---|---|
+| Realistik mashina modellari | yo‘q (8 ta protsedural) | **Blocked** — o‘zgarmadi | TurboSquid, Sketchfab va boshqa model saytlari DNS orqali ochilmaydi |
+| Realistik binolar | protsedural | **Blocked** — o‘zgarmadi | xuddi shu sabab |
+| Yakuniy personaj (Mixamo o‘rniga) | vaqtinchalik Michelle | **Blocked** — o‘zgarmadi | xuddi shu sabab |
+| Bino interyerlari | yo‘q | **Completed (2 ta)** | Uy: mehmonxona, gilam, xontaxta, televizor, yotoq, shkaf, oshxona, derazalar, chiroqlar. Bozor do‘koni: javonlar, muzlatkich, kassa, kiyim stendi. Kirish/chiqishda ekran qorayadi; ichkarida pol balandligi, devor collision va kamera devordan chiqib ketmasligi sinaldi |
+| Uyga kirish | «dam olish» tugmasi | **Completed** | Uyingiz va sotib olingan uy/kvartira → «Uyga kirish»; ichkarida yotoq (uxlash va saqlash), kiyim javoni, garaj |
+| Kiyim tizimi | yo‘q | **Qisman** | Do‘ppi (qora, oq), kepka, quyosh ko‘zoynagi do‘konda sotiladi, kiyiladi, yechiladi va saqlanadi; personaj boshida haqiqiy 3D obyekt sifatida ko‘rinadi (skrinshot). Ko‘ylak va shim almashmaydi: Michelle modeli bitta mesh va bitta teksturadan iborat |
+| Ish vaqtlari | yo‘q | **Completed** | Bank 9–18, birja 8–20, avtosalon 9–20, servis 8–20, osh 7–23, bozor 6–20; yopiq paytda yozuv chiqadi |
+| NPC kun ritmi | yo‘q | **Qisman** | Transport va piyodalar soni soatga qarab o‘zgaradi (tunda kam, ertalab va kechqurun ko‘p, yomg‘irda piyodalar kamayadi). Har bir NPC uchun alohida kun tartibi (uy → ish → uy) yo‘q |
+| Yutuqlar, tasodifiy voqealar | 0.15 da | Completed | 0.15 hisobotiga qarang |
+| Saqlash | bor | Completed | Kiyim va javon saqlanishi sinaldi: `{"outfit":{"hat":"doppi","glasses":true},"wardrobe":["doppi","glasses"]}` |
+
+## Sinov (dasturiy GPU)
+- Tip tekshiruvi va ikkala build xatosiz.
+- Konsolda faqat Google Fonts yuklanmagani haqida xabar bor (bu muhitda internet yopiq), boshqa xato yo‘q.
+- Uyga kirish: HUD «Uyingiz», pol balandligi 0,00.
+- Do‘kondan xarid: 950 000 → 800 000 so‘m (do‘ppi 60 000 + ko‘zoynak 90 000).
+- Kamera eshik orqali tashqariga chiqib ketishi topildi va tuzatildi.
+
+
+# 0.17 — aktivlarga kirish, material pipeline, 5 ta interyer
+
+| Funksiya | Oldingi holat | Yangi holat | Isbot |
+|---|---|---|---|
+| Asset saytlariga kirish | yopiq | **Qisman ochiq** | Saytlar ochiladi, lekin yuklash va API hostlari yopiq (NETWORK_ACCESS.md) |
+| Real mashina, bino, personaj modellari | yo‘q | **Blocked** | Yuklash hostlari yopiq. OpenGameArt’dagi mashinalar realistik emas, ataylab qo‘shilmadi |
+| Foto PBR materiallar | yo‘q | **Pipeline completed, aktivlar blocked** | `npm run assets:fetch` (ambientCG CC0, 10 ta material, ID’lar API orqali tekshirilgan). Runtime yuklovchi sinov teksturalari bilan sinaldi: maysa, g‘isht va parket qo‘llandi (2048 px tekstura yuklandi). Sinov fayllari arxivga kirmagan |
+| Bank interyeri | yo‘q | **Completed** | Kassa oynalari, bankomat; ikkala nuqta bank panelini ochdi |
+| Osh markazi (restoran) | yo‘q | **Completed** | Stol-stullar, so‘ri va gilam, qozon, devor gilami; «Osh buyurtma qilish» ishladi |
+| Idora (mehnat birjasi va ko‘chmas mulk) | yo‘q | **Completed** | Ikkala stol tegishli panellarni ochdi |
+| Avtoservis | yo‘q | **Completed** | Ko‘targich, asboblar shkafi, shinalar; ta’mir paneli ochildi |
+| Avtosalon interyeri | yo‘q | **Completed** | Ko‘rgazma poydevorlari, sotuvchi stoli; avtosalon paneli ochildi. Poydevorlarda mashina yo‘q |
+| Kamera interyerda | devordan chiqib ketardi | **Tuzatildi** | Kamera ship ostida va o‘yinchidan 3,2 m ichida ushlab turiladi |
+| Kafe, supermarket | yo‘q | **Qilinmadi** | Ular uchun xaritada joy (POI) yo‘q |
+| NPC shaxsiy kun tartibi | yo‘q | **Qilinmadi** | Keyingi bosqich |
+| Modulli personaj va to‘liq kiyim | qisman | **Blocked** | Modulli model kerak (ASSET_MANIFEST #3) |
+
+Sinov: tip tekshiruvi va ikkala build xatosiz. Konsolda xato yo‘q, faqat Google Fonts yuklanmagani haqida xabar. Barcha interyer nuqtalari brauzerda chaqirib ko‘rildi.
+
+
+# 0.18 — taksi mijozi, GPS, yo‘llar, mashina nomlari
+
+| Funksiya | Oldingi holat | Hozirgi holat | Haqiqiy sinov dalili |
+|---|---|---|---|
+| Taksi mijozi 3D dunyoda | faqat belgi va matn | **Completed** | Mijoz yo‘l chetida turadi, taksiga qaraydi, mashinaga yuradi va yo‘qoladi (yo‘lovchi), manzilda tushib, uzoqlashadi. Sinov holatlari: wait → ride; tushgan mijoz skrinshotda ko‘rinadi |
+| Taksi to‘lovi | bor | Completed | 950 000 → 1 136 000 so‘m (+136 000, tezlik bonusi bilan) |
+| Yo‘l tarmog‘i bo‘yicha GPS | to‘g‘ri chiziq masofasi | **Completed** | Marshrut 2 309 m, ETA, burilish matni; yo‘l ustida chiziq va minixaritada marshrut (skrinshot) |
+| Marshrutni qayta hisoblash | yo‘q | **Completed** (kodda) | Marshrutdan 24 m chetga chiqilsa yoki har 4 s. Alohida avtomatik sinov qilinmadi |
+| Barcha ishlar uchun navigatsiya | yo‘q | **Completed** | Bitta servis joriy ish qadamini yoki GPS nuqtasini kuzatadi |
+| Svetoforlar va chorraha chiziqlari | tartibsiz | **Completed** | Zebra, to‘xtash chizig‘i, ustunlar chorraha burchaklarida (skrinshot) |
+| Takroriy (parallel) ko‘chalar | bor edi | **Tuzatildi** | 107 ta olib tashlandi |
+| Mashina nomlari | Lola, Qoya va hokazo | **Completed** | Sarbon Motors (o‘ylab topilgan brend): S3, City, S5, S4 Classic, S7, Van, X3, X5; ishlab chiqaruvchi va yil maydonlari bilan. Real brend nomlari ataylab ishlatilmadi — modellar real mashinalar emas |
+| Realistik odam modellari (NPC) | multfilmdek | **Blocked** | Model manbalarining yuklash hostlari yopiq (NETWORK_ACCESS.md). Mijoz vaqtinchalik Mixamo modelidan foydalanadi |
+| NPC shaxsiy kun tartibi | yo‘q | **Qilinmadi** | Keyingi bosqich |
+| Kafe, supermarket joylari | yo‘q | **Qilinmadi** | |
+| Realistik mashina va bino modellari | yo‘q | **Blocked** | NETWORK_ACCESS.md |
+
+Sinov: tip tekshiruvi va ikkala build xatosiz. Konsolda xato chiqmadi. Barcha sinovlar dasturiy GPU’da o‘tkazildi.

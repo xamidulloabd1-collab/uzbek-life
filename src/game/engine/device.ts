@@ -45,7 +45,9 @@ export function detectDevice(): DeviceInfo {
   } else {
     const discrete = /nvidia|geforce|rtx|gtx|radeon rx|radeon pro|apple m[1-9] (pro|max|ultra)|apple m[2-9]/.test(g);
     const weak = /intel\(r\) (hd|uhd) graphics [2-6]\d\d|swiftshader|llvmpipe|mesa offscreen/.test(g);
+    const laptopMid = /geforce mx ?\d{3}|mx\d{3}|iris\(r\) xe|iris xe/.test(g);
     if (weak || mem <= 4) tier = 'low';
+    else if (laptopMid) tier = 'mid';
     else if (discrete && cores >= 6) tier = 'high';
   }
   return { touch, mobile, tier, gpu };

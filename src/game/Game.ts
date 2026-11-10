@@ -30,6 +30,19 @@ import { PostFX } from './engine/PostFX';
 import { MapRenderer, type MapMarker } from './MapRenderer';
 import { PLAYER_SPAWN, POIS, STARTER_CAR, districtNameAt, garageSpawnNear } from './world/cityLayout';
 import { zoneAt } from './world/guzor/network';
+import { EXRLoader } from 'three/examples/jsm/loaders/EXRLoader.js';
+import sunriseUrl from '@/assets/environment/sunrise.exr?url';
+import sunsetUrl from '@/assets/environment/sunset.exr?url';
+import nightUrl from '@/assets/environment/night.exr?url';
+import cloudUrl from '@/assets/environment/cloud.webp?url';
+import { Clouds } from './weather/Clouds';
+import { Interiors, type InteriorKind } from './world/Interiors';
+import { NAV } from './nav/Navigator';
+import { Customer } from './npc/Customer';
+import { NET as NETW } from './world/guzor/network';
+import { applyPhotoMaterials } from './world/photoMaterials';
+import { WorldEvents, eventMods } from '@/systems/events/worldEvents';
+import { ACH_MAP, LANDMARKS } from '@/systems/progress/achievements';
 import { createOwned, vehicleBridge, refuel } from '@/systems/vehicles/vehicleService';
 import { updateMission } from '@/systems/jobs/missions';
 import { payDailyIncome } from '@/systems/properties/propertyService';
@@ -40,6 +53,9 @@ interface Interaction {
   label: string;
   run: () => void;
 }
+
+/** opening hours (24 h) of services; fuel stations and homes are always open */
+const OPEN_HOURS: Partial<Record<string, [number, number]>> = { bank: [9, 18], jobs: [8, 20], realty: [9, 18], dealership: [9, 20], service: [8, 20], osh: [7, 23], bazaar: [6, 20], warehouse: [7, 21] };
 
 export class Game {
   readonly renderer: THREE.WebGLRenderer;
@@ -101,6 +117,20 @@ export class Game {
   private restriction: string | null = null;
   private energy = 100;
   private lastRam = 0;
+  /** image-based lighting per time of day (CC0 HDRIs) */
+  private envMaps: Record<string, THREE.Texture> = {};
+  private envKey = 'day';
+  private envTimer = 0;
+  private skyClouds: Clouds | null = null;
+  private worldEvents = new WorldEvents();
+  private progressTimer = 0;
+  interiors!: Interiors;
+  /** inside a building: which one and where to return on the street */
+  interior: { kind: InteriorKind; ret: { x: number; z: number; h: number } } | null = null;
+  private rhythmTimer = 0;
+  /** visible taxi passenger of the current taxi order */
+  customer: Customer | null = null;
+  photoMaterials: string[] = [];
   /** ids of vehicles added from public/assets/vehicles/catalog.json */
   catalogIds: string[] = [];
   private loadingModels = new Map<string, Promise<void>>();
@@ -153,6 +183,10 @@ export class Game {
     this.builtShadows = s.shadows > 0;
     this.world = new World(P.textureSize, this.builtShadows, P.treeShadows, P.treeDetail);
     this.scene.add(this.world.group);
+    this.interiors = new Interiors(this.scene, this.world.col);
+    this.scene.add(NAV.mesh);
+    // photographic CC0 materials, when `npm run assets:fetch` has been run (multi-file build only)
+    void applyPhotoMaterials(this.world, this.interiors).then((a) => { this.photoMaterials = a; if (a.length) console.info('[materials]', a.join(', ')); });
     onStep('Osmon va yorug‘lik…');
     await new Promise((r) => setTimeout(r, 10));
     this.env = new Environment(this.scene, this.renderer, this.world.tex, P.rainDrops);
@@ -160,9 +194,32 @@ export class Game {
     if (hdr) {
       const pm = new THREE.PMREMGenerator(this.renderer);
       this.scene.environment = pm.fromEquirectangular(hdr).texture;
+      this.envMaps.day = this.scene.environment;
       hdr.dispose();
       pm.dispose();
     }
+    // sunrise / sunset / night lighting and the cloud layer load in the background
+    void (async () => {
+      const pm = new THREE.PMREMGenerator(this.renderer);
+      for (const [k, url] of [['sunrise', sunriseUrl], ['sunset', sunsetUrl], ['night', nightUrl]] as const) {
+        try {
+          const t = await new EXRLoader().loadAsync(url);
+          t.mapping = THREE.EquirectangularReflectionMapping;
+          this.envMaps[k] = pm.fromEquirectangular(t).texture;
+          t.dispose();
+        } catch (err) {
+          console.warn('[env]', k, err);
+        }
+      }
+      pm.dispose();
+      try {
+        const tex = await new THREE.TextureLoader().loadAsync(cloudUrl);
+        this.skyClouds = new Clouds(tex);
+        this.scene.add(this.skyClouds.group);
+      } catch (err) {
+        console.warn('[clouds]', err);
+      }
+    })();
     onStep('Aholi va transport…');
     this.traffic = new Traffic(this.maxTraffic);
     this.peds = new Pedestrians(this.maxPeds);
@@ -480,16 +537,21 @@ export class Game {
       wanted: 0,
       energy: 100,
       businessLevels: {},
+      achievements: [],
+      events: [],
+      wardrobe: [],
+      outfit: { hat: 'none', glasses: false },
     });
     this.energy = 100;
     this.resetLaw();
     this.suppressSync = false;
     this.minutes = TIME.startMinutes;
     this.world.prime(PLAYER_SPAWN.x, PLAYER_SPAWN.z);
+    this.player.setAccessories({ hat: 'none', glasses: false });
     this.spawnVehicle(starter, STARTER_CAR.x, STARTER_CAR.z, STARTER_CAR.heading);
     this.player.place(PLAYER_SPAWN.x, PLAYER_SPAWN.z, 0);
     this.beginPlay();
-    getGame().notify('Xush kelibsiz, G‘uzorga! Otangizdan qolgan «Lola» ko‘chada turibdi.', 'info');
+    getGame().notify('Xush kelibsiz, G‘uzorga! Otangizdan qolgan «Sarbon S3» ko‘chada turibdi.', 'info');
     window.setTimeout(() => getGame().notify('Pul topish uchun Mehnat birjasiga boring yoki telefonda (Tab) ish tanlang.', 'info'), 4500);
     this.saveNow(false);
   }
@@ -501,7 +563,7 @@ export class Game {
     useGame.setState({
       cash: d.cash, bank: d.bank, transactions: d.transactions, vehicles: d.vehicles, activeVehicleUid: d.activeVehicleUid,
       properties: d.properties, cargo: d.cargo, mission: null, jobStats: d.jobStats, waypoint: null, day: d.day, minutes: d.minutes,
-      weather: d.weather, notifications: [], hud: INITIAL_HUD, wanted: 0, energy: d.energy ?? 100, businessLevels: d.businessLevels ?? {},
+      weather: d.weather, notifications: [], hud: INITIAL_HUD, wanted: 0, energy: d.energy ?? 100, businessLevels: d.businessLevels ?? {}, achievements: d.achievements ?? [], events: [], wardrobe: d.wardrobe ?? [], outfit: d.outfit ?? { hat: 'none', glasses: false },
     });
     this.energy = d.energy ?? 100;
     this.resetLaw();
@@ -518,6 +580,7 @@ export class Game {
       this.vehicle = null;
     }
     this.world.prime(d.player.x, d.player.z);
+    this.player.setAccessories(d.outfit ?? { hat: 'none', glasses: false });
     this.player.place(d.player.x, d.player.z, d.player.heading);
     this.beginPlay();
     getGame().notify('Saqlangan o‘yin yuklandi', 'good');
@@ -560,7 +623,7 @@ export class Game {
       vehicleWorld: v ? { uid: v.owned.uid, x: v.physics.x, z: v.physics.z, heading: v.physics.heading } : null,
       cash: st.cash, bank: st.bank, transactions: st.transactions, vehicles: st.vehicles, activeVehicleUid: st.activeVehicleUid,
       properties: st.properties, cargo: st.cargo.filter((c) => !['yolovchi', 'osh', 'posilka', 'asboblar', 'hosil'].includes(c.id)),
-      jobStats: st.jobStats, day: s.day, minutes: this.minutes, weather: s.weather, energy: this.energy, businessLevels: st.businessLevels,
+      jobStats: st.jobStats, day: s.day, minutes: this.minutes, weather: s.weather, energy: this.energy, businessLevels: st.businessLevels, achievements: st.achievements, wardrobe: st.wardrobe, outfit: st.outfit,
     };
   }
 
@@ -647,6 +710,26 @@ export class Game {
   private poiInteraction(): Interaction | null {
     const s = getGame();
     const px = this.player.x, pz = this.player.z;
+    if (this.interior) {
+      const it = this.interiors.list[this.interior.kind];
+      const spot = it.spots.find((sp) => Math.hypot(sp.x - px, sp.z - pz) < 1.7);
+      if (!spot) return null;
+      const homeGarage = s.properties.map((id) => PROPERTY_MAP[id]).find((p) => p?.hasGarage);
+      switch (spot.action) {
+        case 'exit': return { label: spot.label, run: () => this.exitInterior() };
+        case 'sleep': return { label: spot.label, run: () => { this.energy = Math.max(this.energy, 100); this.saveNow(true); } };
+        case 'wardrobe': return { label: spot.label, run: () => s.setPanel('wardrobe', 'home') };
+        case 'accessories': return { label: spot.label, run: () => s.setPanel('wardrobe', 'shop') };
+        case 'food': { const c = Math.round((ECONOMY.foodBazaar * eventMods.food) / 1000) * 1000; return { label: `${spot.label} — ${formatSom(c)}`, run: () => this.eat(c, 45, 'Do‘kon') }; }
+        case 'garage': return homeGarage ? { label: spot.label, run: () => s.setPanel('garage', homeGarage.id) } : null;
+        case 'bank': return { label: spot.label, run: () => s.setPanel('bank') };
+        case 'jobs': return { label: spot.label, run: () => s.setPanel('jobs') };
+        case 'realty': return { label: spot.label, run: () => s.setPanel('properties') };
+        case 'service': return { label: spot.label, run: () => s.setPanel('garage', 'service') };
+        case 'dealership': return { label: spot.label, run: () => s.setPanel('dealership', 'here') };
+        case 'osh': { const c = Math.round((ECONOMY.foodOsh * eventMods.food) / 1000) * 1000; return { label: `${spot.label} — ${formatSom(c)}`, run: () => this.eat(c, 100, 'Osh markazi') }; }
+      }
+    }
     const v = this.vehicle;
     if (v && Math.hypot(v.physics.x - px, v.physics.z - pz) < v.spec.dims.length / 2 + 1.2) {
       return { label: `${v.spec.name} — o‘tirish (sizniki)`, run: () => this.beginEnter(v) };
@@ -668,17 +751,20 @@ export class Game {
     }
     for (const poi of POIS) {
       if (Math.hypot(poi.pos.x - px, poi.pos.z - pz) > poi.radius) continue;
+      const hours = OPEN_HOURS[poi.kind];
+      const hNow = this.minutes / 60;
+      if (hours && (hNow < hours[0] || hNow >= hours[1])) return { label: `${poi.name} — yopiq (${hours[0]}:00–${hours[1]}:00)`, run: () => s.notify(`${poi.name} ${hours[0]}:00 da ochiladi`, 'info') };
       switch (poi.kind) {
         case 'bank':
-          return { label: 'Bank', run: () => s.setPanel('bank') };
+          return { label: 'Bankka kirish', run: () => this.enterInterior('bank') };
         case 'jobs':
-          return { label: 'Mehnat birjasi — ishlar', run: () => s.setPanel('jobs') };
+          return { label: 'Mehnat birjasiga kirish', run: () => this.enterInterior('office') };
         case 'realty':
-          return { label: 'Ko‘chmas mulk agentligi', run: () => s.setPanel('properties') };
+          return { label: 'Ko‘chmas mulk agentligiga kirish', run: () => this.enterInterior('office') };
         case 'dealership':
-          return { label: 'Avtosalonga kirish', run: () => s.setPanel('dealership', 'here') };
+          return { label: 'Avtosalonga kirish', run: () => this.enterInterior('showroom') };
         case 'service':
-          return { label: 'Avtoservis va garaj', run: () => s.setPanel('garage', 'service') };
+          return { label: 'Avtoservisga kirish', run: () => this.enterInterior('workshop') };
         case 'fuel':
           return {
             label: 'Yoqilg‘i quyish',
@@ -688,18 +774,19 @@ export class Game {
             },
           };
         case 'home':
-          return { label: 'Uyda dam olish (saqlash)', run: () => this.saveNow(true) };
+          return { label: 'Uyga kirish', run: () => this.enterInterior('home') };
         case 'property': {
           const p = PROPERTY_MAP[poi.propertyId!];
           const owned = s.properties.includes(p.id);
           if (owned && p.hasGarage) return { label: `${p.name} — garaj`, run: () => s.setPanel('garage', p.id) };
+          if (owned && p.type !== 'commercial') return { label: `${p.name} — uyga kirish`, run: () => this.enterInterior('home') };
           if (owned) return { label: `${p.name} — sizniki`, run: () => s.setPanel('properties', p.id) };
           return { label: `Sotuvda: ${p.name}`, run: () => s.setPanel('properties', p.id) };
         }
         case 'osh':
-          return { label: `Osh yeyish — ${formatSom(ECONOMY.foodOsh)}`, run: () => this.eat(ECONOMY.foodOsh, 100, 'Osh markazi') };
+          return { label: 'Osh markaziga kirish', run: () => this.enterInterior('restaurant') };
         case 'bazaar':
-          return { label: `Non va meva — ${formatSom(ECONOMY.foodBazaar)}`, run: () => this.eat(ECONOMY.foodBazaar, 45, 'Dehqon bozori') };
+          return { label: 'Bozor do‘koniga kirish', run: () => this.enterInterior('shop') };
         default:
           return { label: `${poi.name} — ishlar`, run: () => s.setPanel('jobs') };
       }
@@ -881,6 +968,99 @@ export class Game {
     s.notify(`Politsiya to‘xtatdi. Jarima: ${formatSom(fine)}. Mashina egasiga qaytarildi.`, 'bad');
   }
 
+  // ------------------------------------------------------------ interiors
+  enterInterior(kind: InteriorKind) {
+    if (this.inVehicle || this.interior) return;
+    const it = this.interiors.list[kind];
+    const ret = { x: this.player.x, z: this.player.z, h: this.player.heading + Math.PI };
+    useGame.setState({ fade: true });
+    setTimeout(() => {
+      this.interior = { kind, ret };
+      this.interiors.setActive(kind);
+      this.player.place(it.spawn.x, it.spawn.z, it.spawn.h);
+      this.rig.yaw = it.spawn.h + Math.PI;
+      this.rig.pitch = 0.18;
+      useGame.setState({ fade: false });
+    }, 300);
+  }
+
+  exitInterior() {
+    if (!this.interior) return;
+    const ret = this.interior.ret;
+    useGame.setState({ fade: true });
+    setTimeout(() => {
+      this.interior = null;
+      this.interiors.setActive(null);
+      this.world.prime(ret.x, ret.z, 200);
+      this.player.place(ret.x, ret.z, ret.h);
+      useGame.setState({ fade: false });
+    }, 300);
+  }
+
+  /** city rhythm: busy mornings and evenings, quiet nights */
+  private updateRhythm(dt: number) {
+    this.rhythmTimer -= dt;
+    if (this.rhythmTimer > 0) return;
+    this.rhythmTimer = 3;
+    const h = this.minutes / 60, g = getGame(), s = g.settings;
+    const traffic = h < 5 ? 0.25 : h < 7 ? 0.55 : h < 9.5 ? 1 : h < 16.5 ? 0.9 : h < 19.5 ? 1 : h < 22.5 ? 0.6 : 0.35;
+    const walkers = h < 5 ? 0.08 : h < 7 ? 0.4 : h < 9.5 ? 0.85 : h < 20.5 ? 1 : h < 22.5 ? 0.45 : 0.15;
+    const rain = g.weather === 'rain' ? 0.55 : 1;
+    if (this.traffic) this.traffic.target = Math.round(this.maxTraffic * s.trafficDensity * traffic);
+    if (this.peds) this.peds.target = Math.round(this.maxPeds * s.pedestrianDensity * walkers * rain);
+  }
+
+  /** achievements, landmark discovery and random world events */
+  private updateProgress(dt: number, fx: number, fz: number) {
+    this.progressTimer -= dt;
+    if (this.progressTimer > 0) return;
+    this.progressTimer = 1;
+    const s = getGame();
+    const speed = this.inVehicle && this.dv ? this.dv.physics.speedKmh : 0;
+    const now = s.day * 1440 + this.minutes;
+    const changed = this.worldEvents.update(now, { x: fx, z: fz }, speed, (e) => {
+      const st = getGame();
+      useGame.setState({ cash: st.cash + (e.reward ?? 0), jobStats: { ...st.jobStats, events: (st.jobStats.events ?? 0) + 1 } });
+      st.notify(`${e.title}: rahmat! +${formatSom(e.reward ?? 0)}`, 'good');
+    });
+    if (changed) {
+      const ev = this.worldEvents.active;
+      const fresh = ev.find((e) => e.pos && !s.events.some((x) => x.title === e.title));
+      if (fresh?.pos) {
+        useGame.setState({ waypoint: fresh.pos });
+        s.notify(`${fresh.title} — joy GPS’da belgilandi`, 'info');
+      } else {
+        const msg = ev.find((e) => !e.pos && !s.events.some((x) => x.title === e.title));
+        if (msg) s.notify(`${msg.title}: ${msg.desc}`, 'info');
+      }
+    }
+    useGame.setState({ events: this.worldEvents.active.map((e) => ({ title: e.title, desc: e.desc, left: Math.max(0, Math.round(e.until - now)), place: !!e.pos })) });
+    // achievements
+    const got = new Set(s.achievements);
+    const add: string[] = [];
+    const test = (id: string, ok: boolean) => { if (ok && !got.has(id)) { got.add(id); add.push(id); } };
+    const js = s.jobStats;
+    const total = Object.entries(js).filter(([k]) => k !== 'events').reduce((a, [, v]) => a + v, 0);
+    test('first-job', total >= 1);
+    test('taxi-10', (js.taxi ?? 0) >= 10);
+    test('deliver-10', (js.delivery ?? 0) + (js.courier ?? 0) >= 10);
+    test('cargo-5', (js.cargo ?? 0) >= 5);
+    test('rich-10m', s.cash + s.bank >= 10_000_000);
+    test('second-car', s.vehicles.length >= 2);
+    test('home', s.properties.some((p) => /^(apt|hovli|villa)-/.test(p)));
+    test('business', s.properties.some((p) => /^biz-/.test(p)));
+    test('night-driver', this.env.state.night > 0.7 && speed > 70);
+    test('rain-driver', s.weather === 'rain' && speed > 20);
+    test('event-helper', (js.events ?? 0) >= 3);
+    for (const l of LANDMARKS) test(l.id, Math.hypot(l.x - fx, l.z - fz) < 62);
+    test('explorer', LANDMARKS.every((l) => got.has(l.id)));
+    if (add.length) {
+      const reward = add.reduce((a, id) => a + (ACH_MAP[id]?.reward ?? 0), 0);
+      useGame.setState({ achievements: [...got], cash: getGame().cash + reward });
+      for (const id of add) s.notify(`Yutuq: ${ACH_MAP[id]?.name ?? id}${ACH_MAP[id]?.reward ? ` · +${formatSom(ACH_MAP[id].reward)}` : ''}`, 'good');
+    }
+  }
+
   private eat(cost: number, amount: number, where: string) {
     if (this.energy > 95) {
       getGame().notify('Qorningiz to‘q', 'info');
@@ -1029,6 +1209,8 @@ export class Game {
     if (!paused) {
       this.simulateWorld(dt, fx, fz, true);
       this.updateLaw(dt, fx, fz);
+      this.updateProgress(dt, fx, fz);
+      this.updateRhythm(dt);
       this.parkedTimer -= dt;
       if (this.parkedTimer <= 0) {
         this.parkedTimer = 0.6;
@@ -1170,7 +1352,7 @@ export class Game {
   private envOnly(fx: number, fz: number, dt = 0.016) {
     const s = getGame();
     const minutes = this.playing ? this.minutes : 17 * 60 + 20;
-    const st = this.env.update(dt, minutes, this.playing ? s.weather : 'clear', this.camera, new THREE.Vector3(fx, 0, fz));
+    const st = this.env.update(dt, minutes, this.playing && !this.interior ? s.weather : 'clear', this.camera, new THREE.Vector3(fx, 0, fz));
     this.world.update(dt, this.camera.position, st.night, st.wet, st.horizon, st.daylight);
     this.world.setTrafficLights(this.traffic.phase);
     this.vehicle?.sync(st.night, dt);
@@ -1187,6 +1369,19 @@ export class Game {
       this.headlight.intensity = v.lightsOn && v.physics.engineOn ? Math.max(0.25, st.night) * 280 : 0;
     } else this.headlight.intensity = 0;
     this.post.setNight(st.night, st.rain);
+    // time-of-day environment light and sky clouds
+    this.envTimer -= dt;
+    if (this.envTimer <= 0) {
+      this.envTimer = 1;
+      const h = this.minutes / 60;
+      const key = h < 5.2 || h > 20.3 ? 'night' : h < 7.6 ? 'sunrise' : h > 17.6 ? 'sunset' : 'day';
+      const tex = this.envMaps[key] ?? this.envMaps.day;
+      if (tex && key !== this.envKey) {
+        this.scene.environment = tex;
+        this.envKey = key;
+      }
+    }
+    this.skyClouds?.update(dt, this.camera.position, this.env['cloud'], st.rain, 1 - st.night, st.horizon);
     this.audio.update({
       inVehicle: this.inVehicle && !!this.dv?.physics.engineOn,
       rpm: this.dv?.physics.rpm ?? 0,
@@ -1220,11 +1415,52 @@ export class Game {
       this.rig.update(dt, inp, v.physics.x, v.physics.y + 1.25, v.physics.z, v.physics.heading, Math.abs(v.physics.vx), this.world.col);
     } else {
       this.rig.update(dt, inp, this.player.x, this.player.y + 1.55, this.player.z, null, this.player.speed, this.world.col);
+      if (this.interior) {
+        // keep the camera inside the room: under the ceiling and close to the player
+        const it = this.interiors.list[this.interior.kind];
+        const cam = this.camera.position, H = (it.height ?? 3) - 0.35;
+        if (cam.y > H) cam.y = H;
+        const dx = cam.x - this.player.x, dz = cam.z - this.player.z, d = Math.hypot(dx, dz);
+        if (d > 3.2) { cam.x = this.player.x + (dx / d) * 3.2; cam.z = this.player.z + (dz / d) * 3.2; }
+      }
     }
   }
 
   private updateMissionAndHud(dt: number, fx: number, fz: number) {
     const s = getGame();
+    // ---- GPS: one navigator for every job and for the player's own waypoint
+    const curStep = s.mission ? s.mission.steps[s.mission.stepIndex] : null;
+    NAV.setTarget(this.interior ? null : curStep ? curStep.pos : s.waypoint);
+    NAV.update(dt, { x: fx, z: fz }, this.inVehicle && this.dv ? this.dv.physics.speedKmh : 5);
+    // ---- taxi passenger: stands at the kerb, walks to the car, rides, gets out
+    const pickStep = curStep?.giveItem === 'yolovchi', dropStep = curStep?.takeItem === 'yolovchi';
+    if (pickStep && !this.customer && this.player.avatarSource && curStep) {
+      const r = NETW.nearestRoad(curStep.pos.x, curStep.pos.z, 30);
+      let p = curStep.pos, face = 0;
+      if (r) {
+        let nx = curStep.pos.x - r.px, nz = curStep.pos.z - r.pz;
+        const l = Math.hypot(nx, nz) || 1;
+        nx /= l; nz /= l;
+        p = { x: r.px + nx * (r.e.width / 2 + 1.6), z: r.pz + nz * (r.e.width / 2 + 1.6) };
+        face = Math.atan2(-nx, -nz);
+      }
+      this.customer = new Customer(this.player.avatarSource, p, face);
+      this.scene.add(this.customer.group);
+    }
+    if (this.customer) {
+      const car = this.inVehicle && this.dv ? this.dv.physics : null;
+      const door = car ? { x: car.x - Math.cos(car.heading) * 1.5, z: car.z + Math.sin(car.heading) * 1.5 } : { x: fx + 1.5, z: fz };
+      if (this.customer.state === 'wait') {
+        if (car) this.customer.lookAt(car);
+        if (dropStep) this.customer.board(door);
+        else if (!pickStep) { this.customer.dispose(); this.customer = null; }
+      } else if (this.customer.state === 'ride' && !dropStep) {
+        const away = { x: door.x - Math.cos(car?.heading ?? 0) * 6, z: door.z + Math.sin(car?.heading ?? 0) * 6 };
+        this.customer.alight(door, away);
+      }
+      if (this.customer?.state === 'gone') { this.customer.dispose(); this.customer = null; }
+      this.customer?.update(dt);
+    }
     const v = this.dv ?? this.vehicle;
     const tick = dt > 0 ? updateMission(dt, { pos: { x: fx, z: fz }, inVehicle: this.inVehicle, speedKmh: this.inVehicle && v ? v.physics.speedKmh : 0 }) : null;
     const m = getGame().mission;
@@ -1277,10 +1513,12 @@ export class Game {
       fuelMax: v?.spec.perf.fuelCapacity ?? 1,
       health: p?.health ?? 100,
       prompt: tick?.blocked ?? this.restriction,
-      district: districtNameAt(fx, fz),
+      district: this.interior ? this.interiors.list[this.interior.kind].title : districtNameAt(fx, fz),
       activity,
       fps: Math.round(this.fps),
-      missionDistance: tick ? tick.distance : null,
+      missionDistance: tick ? (NAV.route.length > 1 ? NAV.distance : tick.distance) : null,
+      navEta: NAV.target && NAV.route.length > 1 ? NAV.eta : null,
+      navTurn: NAV.target && NAV.turn ? (NAV.turn.dir === 'to‘g‘ri' ? `To‘g‘ri ${Math.round(NAV.turn.dist)} m` : `${NAV.turn.dir === 'chap' ? 'Chapga' : 'O‘ngga'} buriling · ${Math.round(NAV.turn.dist)} m`) : null,
       missionHold: tick ? tick.holdRatio : 0,
       missionArrow: arrow,
       waypointDistance: wp ? Math.hypot(wp.x - fx, wp.z - fz) : null,

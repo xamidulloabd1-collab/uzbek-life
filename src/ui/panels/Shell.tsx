@@ -1,3 +1,5 @@
+import { WardrobePanel } from './WardrobePanel';
+import { ProgressPanel } from './ProgressPanel';
 import { useState } from 'react';
 import type { PanelId } from '@/types';
 import { useGame } from '@/stores/gameStore';
@@ -11,6 +13,7 @@ import { MapPanel, JobsPanel, GaragePanel, DealershipPanel, PropertiesPanel, Ban
 type Tab = Exclude<PanelId, null | 'pause' | 'phone'>;
 const TABS: { id: Tab; name: string; ic: string }[] = [
   { id: 'map', name: 'Xarita', ic: 'X' },
+  { id: 'progress', name: 'Yutuqlar', ic: 'Y' },
   { id: 'jobs', name: 'Ishlar', ic: 'I' },
   { id: 'garage', name: 'Garaj', ic: 'G' },
   { id: 'dealership', name: 'Avtosalon', ic: 'A' },
@@ -33,6 +36,8 @@ function Content({ tab }: { tab: Tab | 'home' }) {
     case 'settings': return <SettingsPanel />;
     case 'credits': return <CreditsPanel />;
     case 'assets': return <AssetLabPanel />;
+    case 'progress': return <ProgressPanel />;
+    case 'wardrobe': return <WardrobePanel />;
     default: return <Home />;
   }
 }

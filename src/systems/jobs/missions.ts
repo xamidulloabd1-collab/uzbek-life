@@ -3,6 +3,7 @@ import { useGame } from '@/stores/gameStore';
 import { ECONOMY } from '@/config/economy';
 import { VEHICLE_MAP } from '@/config/vehicles';
 import { SITES, poiOf, randomCurbPoint } from '@/game/world/cityLayout';
+import { eventMods } from '@/systems/events/worldEvents';
 import { frameToWorld } from '@/game/world/guzor/network';
 import { earn } from '@/systems/economy/economy';
 import { formatSom, pick, rand } from '@/utils/math';
@@ -61,7 +62,7 @@ export function startJob(jobId: string, ctx: { pos: Vec2; inVehicle: boolean; ve
     const a = randomCurbPoint(rng, undefined, ctx.pos, 120);
     const b = randomCurbPoint(rng, undefined, a, 320);
     const factor = VEHICLE_MAP[ctx.vehicleSpecId ?? 'lola']?.fareFactor ?? 1;
-    reward = Math.round(((J.taxiBase + J.taxiPerMeter * len(a, b)) * factor) / 1000) * 1000;
+    reward = Math.round(((J.taxiBase + J.taxiPerMeter * len(a, b)) * factor * eventMods.fare) / 1000) * 1000;
     title = `Taksi: ${name}`;
     steps = [
       { label: `${name}ni olib keting`, pos: a, radius: 6, kind: 'pickup', hold: 2, requireVehicle: true, giveItem: 'yolovchi' },
@@ -211,3 +212,5 @@ export function updateMission(dt: number, ctx: { pos: Vec2; inVehicle: boolean; 
   }
   return { distance, target: step.pos, holdRatio: progress / step.hold, blocked };
 }
+
+if (typeof window !== 'undefined') (window as unknown as { __startJob: typeof startJob }).__startJob = startJob;

@@ -4,5 +4,6 @@ dist-single/
 *.log
 .env
 .env.*
+.DS_Store
+Thumbs.db
 .vercel
-.netlify

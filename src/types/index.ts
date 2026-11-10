@@ -61,6 +61,9 @@ export interface VehicleSpec {
   fareFactor: number;
   /** catalog fields (vehicles added from public/assets/vehicles) */
   category?: VehicleCategory;
+  /** fictional in-game manufacturer (real brands only with licensed models) */
+  manufacturer?: string;
+  year?: number;
   modelUrl?: string;
   rotateY?: number;
   /** relative spawn weight in traffic */
@@ -116,6 +119,8 @@ export type Side = 'n' | 's' | 'e' | 'w';
 export type PanelId =
   | null
   | 'pause'
+  | 'progress'
+  | 'wardrobe'
   | 'map'
   | 'garage'
   | 'dealership'
@@ -208,6 +213,9 @@ export interface HudState {
   missionDistance: number | null;
   missionHold: number;
   missionArrow: number | null;
+  /** GPS route (road graph): seconds to arrival and the next manoeuvre */
+  navEta: number | null;
+  navTurn: string | null;
   waypointDistance: number | null;
   interaction: string | null;
   vehicleAction: string | null;

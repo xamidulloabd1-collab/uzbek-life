@@ -14,3 +14,10 @@ Shahar, binolar, teksturalar va tovushlar ham kodda yaratilgan original assetlar
 ## Xarita ma’lumotlari
 - Joylar va asosiy yo‘llar: foydalanuvchi suratlari (Google Maps) faqat namuna sifatida ishlatilgan, hech qanday tasvir o‘yinga qo‘shilmagan.
 - Musofir ota masjidi joylashuvi: © OpenStreetMap contributors (ODbL 1.0).
+
+
+## 0.15 — vaqtga qarab yorug‘lik va bulutlar (CC0)
+| Asset | Fayl | Manba | Litsenziya |
+|---|---|---|---|
+| «sunrise», «sunset», «night» HDRI (512 px, EXR DWAB) | src/assets/environment/{sunrise,sunset,night}.exr | npm `@pmndrs/assets` 1.7.0 (asli Poly Haven HDRI’lari) | CC0 1.0 |
+| Bulut teksturasi | src/assets/environment/cloud.webp | npm `@pmndrs/assets` 1.7.0 | CC0 1.0 |

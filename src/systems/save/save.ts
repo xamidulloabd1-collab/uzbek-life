@@ -26,6 +26,9 @@ export interface SaveData {
   weather: WeatherKind;
   energy?: number;
   businessLevels?: Record<string, number>;
+  achievements?: string[];
+  wardrobe?: string[];
+  outfit?: { hat: string; glasses: boolean };
 }
 
 const num = (v: unknown, fallback: number, min = -Infinity, max = Infinity) =>
@@ -66,10 +69,10 @@ export function validateSave(raw: unknown): SaveData | null {
   return {
     version: SAVE_VERSION,
     savedAt: num(o.savedAt, Date.now()),
-    player: { x: num(p.x, 0, -2000, 2000), z: num(p.z, 0, -2000, 2000), heading: num(p.heading, 0) },
+    player: { x: num(p.x, 0, -4000, 4000), z: num(p.z, 0, -4000, 4000), heading: num(p.heading, 0) },
     vehicleWorld:
       vw && typeof vw === 'object' && typeof vw.uid === 'string'
-        ? { uid: vw.uid, x: num(vw.x, 0, -2000, 2000), z: num(vw.z, 0, -2000, 2000), heading: num(vw.heading, 0) }
+        ? { uid: vw.uid, x: num(vw.x, 0, -4000, 4000), z: num(vw.z, 0, -4000, 4000), heading: num(vw.heading, 0) }
         : null,
     cash: num(o.cash, 0, 0, LIMIT),
     bank: num(o.bank, 0, 0, LIMIT),
@@ -90,6 +93,9 @@ export function validateSave(raw: unknown): SaveData | null {
     minutes: num(o.minutes, 510, 0, 1439),
     weather: o.weather === 'rain' || o.weather === 'cloudy' || o.weather === 'fog' ? o.weather : 'clear',
     energy: num(o.energy, 100, 0, 100),
+    wardrobe: (Array.isArray(o.wardrobe) ? o.wardrobe : []).filter((x): x is string => typeof x === 'string').slice(0, 50),
+    outfit: { hat: typeof (o.outfit as Record<string, unknown>)?.hat === 'string' ? String((o.outfit as Record<string, unknown>).hat) : 'none', glasses: !!(o.outfit as Record<string, unknown>)?.glasses },
+    achievements: (Array.isArray(o.achievements) ? o.achievements : []).filter((x): x is string => typeof x === 'string').slice(0, 100),
     businessLevels: Object.fromEntries(Object.entries((o.businessLevels as Record<string, unknown>) ?? {}).filter(([k]) => !!PROPERTY_MAP[k]).map(([k, v]) => [k, Math.round(num(v, 0, 0, 3))])),
   };
 }

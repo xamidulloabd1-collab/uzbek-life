@@ -1,5 +1,6 @@
 import type { Vec2 } from '@/types';
 import { POIS } from '@/game/world/cityLayout';
+import { NAV } from '@/game/nav/Navigator';
 import { NET, BOUNDS, RIVER, RAIL_Z, STATION, ZONES, ZONE_COLORS, MAHALLA_NAMES, frameToWorld } from '@/game/world/guzor/network';
 
 const SIZE = 2048;
@@ -195,6 +196,7 @@ export class MapRenderer {
     ctx.scale(k, k);
     ctx.translate(-toMapX(pos.x), -toMapZ(pos.z));
     ctx.drawImage(this.base, 0, 0);
+    this.drawRoute(ctx, 5 / k);
     this.drawMarkers(ctx, markers, 1 / k);
     this.drawPlayer(ctx, pos, heading, 1 / k);
     ctx.restore();
@@ -223,9 +225,20 @@ export class MapRenderer {
     ctx.save();
     ctx.scale(k, k);
     ctx.drawImage(this.base, 0, 0);
+    this.drawRoute(ctx, 3 * (SIZE / size));
     this.drawMarkers(ctx, markers, 1.6 / k / 2);
     this.drawPlayer(ctx, pos, heading, 1.6 / k / 2);
     ctx.restore();
+  }
+
+  private drawRoute(ctx: CanvasRenderingContext2D, w: number) {
+    if (NAV.route.length < 2) return;
+    ctx.strokeStyle = '#2bb3c0';
+    ctx.lineWidth = w;
+    ctx.lineJoin = ctx.lineCap = 'round';
+    ctx.beginPath();
+    NAV.route.forEach((p, i) => (i ? ctx.lineTo(toMapX(p.x), toMapZ(p.z)) : ctx.moveTo(toMapX(p.x), toMapZ(p.z))));
+    ctx.stroke();
   }
 
   /** canvas pixel (CSS px) → world position */
