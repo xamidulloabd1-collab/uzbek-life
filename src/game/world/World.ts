@@ -12,6 +12,7 @@ import { PROPERTIES } from '@/config/properties';
 import { mulberry32, pick, rand } from '@/utils/math';
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { frameToWorld } from './guzor/network';
+import { HOUSE_GATE_W, houseGateX } from './cityLayout';
 import { NET, BOUNDS, CHUNK, RIVER, RAIL_Z, STATION, baseH, terrainH, riverDist, zoneAt, groundAt, type Edge, type Lot } from './guzor/network';
 
 export interface PropInstance { meshes: THREE.InstancedMesh[]; index: number; x: number; z: number; rot: number; s: number; kind: TreeType | 'lamp' | 'bench' | 'bin'; key?: string; colId?: number }
@@ -232,10 +233,37 @@ export class World {
   private addStreetParking() {
     const rng = mulberry32(4242);
     for (const p of NET.parked) {
+      // keep courtyard gates free for driving in and out
+      if (this.gateBlocked(p.x, p.z, 3.6)) continue;
       const spec = pick(rng, VEHICLES);
       const colId = this.col.addOBB(p.x, p.z, spec.dims.width / 2, spec.dims.length / 2, p.rot, 1.4);
       this.parkedSrc.push({ x: p.x, z: p.z, rot: p.rot, specId: spec.id, color: pick(rng, TRAFFIC_COLORS), gy: groundAt(p.x, p.z), colId, display: false });
     }
+  }
+
+  /** driveway in front of every courtyard gate: no street trees, lamps or parked cars there */
+  private gateGrid: Map<string, { x: number; z: number }[]> | null = null;
+  private gateBlocked(x: number, z: number, r: number) {
+    if (!this.gateGrid) {
+      const grid = new Map<string, { x: number; z: number }[]>();
+      for (const L of NET.lots) {
+        if (L.kind !== 'house') continue;
+        const gc = houseGateX(L.id, L.w, !!L.home) + HOUSE_GATE_W / 2;
+        for (const lz of [-1.6, 0.6, 2.6]) {
+          const p = frameToWorld(L.ox, L.oz, L.rot, gc, lz);
+          const k = `${Math.floor(p.x / 10)},${Math.floor(p.z / 10)}`;
+          let a = grid.get(k);
+          if (!a) grid.set(k, (a = []));
+          a.push(p);
+        }
+      }
+      this.gateGrid = grid;
+    }
+    const cx = Math.floor(x / 10), cz = Math.floor(z / 10);
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+      for (const p of this.gateGrid.get(`${cx + i},${cz + j}`) ?? []) if ((p.x - x) ** 2 + (p.z - z) ** 2 < r * r) return true;
+    }
+    return false;
   }
 
   // ------------------------------------------------------------ streamed lot chunks
@@ -253,7 +281,7 @@ export class World {
       setSite(L.ox, L.oz, L.rot);
       const ctx = this.ctx(b, d, facade, trees, lamps, signs, L, opts, slots, colIds);
       const useModel = !!ed?.model && this.worldModels.has(ed.model);
-      buildLot(ctx, useModel ? 'empty' : L.kind, L.w, L.d, !!L.home || ctx.rng() < 0.1, L.zone === 'center');
+      buildLot(ctx, useModel ? 'empty' : L.kind, L.w, L.d, !!L.home || ctx.rng() < 0.1, L.zone === 'center', !!L.home, houseGateX(L.id, L.w, !!L.home));
       if (useModel) glbs.push({ L, ed: ed! });
     }
     const group = new THREE.Group();
@@ -927,6 +955,7 @@ export class World {
       return b;
     };
     for (const t of trees) {
+      if (t.type !== 'grass' && this.gateBlocked(t.x, t.z, 2.6)) continue;
       bucket(t.x, t.z).trees.push(t);
       if (t.type === 'bush' || t.type === 'grass') continue;
       const w = t.type === 'fruit' ? 0.35 : t.type === 'terak' ? 0.4 : 0.6;
@@ -935,6 +964,7 @@ export class World {
       colOf.set(t, id);
     }
     for (const l of lamps) {
+      if (this.gateBlocked(l.x, l.z, 2.2)) continue;
       bucket(l.x, l.z).lamps.push(l);
       const k = l.kind ?? 'lamp';
       const id = k === 'lamp' ? this.col.addCentered(l.x, l.z, 0.3, 0.3, 7) : this.col.addOBB(l.x, l.z, k === 'bench' ? 0.9 : 0.3, k === 'bench' ? 0.35 : 0.3, l.rot, 1);

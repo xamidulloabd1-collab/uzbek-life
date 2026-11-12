@@ -28,7 +28,9 @@ import { AudioManager } from './audio/AudioManager';
 import { AssetManager } from './engine/AssetManager';
 import { PostFX } from './engine/PostFX';
 import { MapRenderer, type MapMarker } from './MapRenderer';
-import { PLAYER_SPAWN, POIS, STARTER_CAR, districtNameAt, garageSpawnNear } from './world/cityLayout';
+import { PLAYER_SPAWN, POIS, STARTER_CAR, HOME_HEADING, districtNameAt, garageSpawnNear } from './world/cityLayout';
+import { tuneAvatarMaterials, type AvatarSource } from './player/Player';
+import { NPC_AVATARS } from '@/assets/manifest';
 import { zoneAt } from './world/guzor/network';
 import { EXRLoader } from 'three/examples/jsm/loaders/EXRLoader.js';
 import sunriseUrl from '@/assets/environment/sunrise.exr?url';
@@ -47,7 +49,7 @@ import { createOwned, vehicleBridge, refuel } from '@/systems/vehicles/vehicleSe
 import { updateMission } from '@/systems/jobs/missions';
 import { payDailyIncome } from '@/systems/properties/propertyService';
 import { readSave, writeSave, SAVE_VERSION, type SaveData } from '@/systems/save/save';
-import { clamp, formatSom } from '@/utils/math';
+import { clamp, dampAngle, formatSom } from '@/utils/math';
 
 interface Interaction {
   label: string;
@@ -229,8 +231,10 @@ export class Game {
     this.player.onStep = () => this.audio.footstep();
     this.scene.add(this.traffic.group, this.peds.group, this.player.group);
     onStep('Personaj yuklanmoqda…');
-    const [char, clips] = await Promise.all([this.assets.loadGLTF('char.player'), this.assets.loadGLTF('anim.locomotion')]);
-    if (char) this.player.setAvatar(char, clips);
+    const char = await this.assets.loadGLTF('char.player');
+    if (char) this.player.setAvatar(char);
+    // NPC bodies (taxi passengers) load after the menu appears
+    void this.loadNPCs().catch((err) => console.warn('[npc]', err));
     this.makeMarkers();
     this.showcase = new Showcase(this.world, this.builtShadows);
     this.scene.add(this.showcase.group);
@@ -285,6 +289,7 @@ export class Game {
 
   private spawnVehicle(rec: OwnedVehicle, x: number, z: number, heading: number) {
     const wasDriving = !!this.vehicle && this.drivingV === this.vehicle;
+    if (this.vehicle && this.player.group.parent === this.vehicle.seatRoot) this.scene.add(this.player.group);
     if (this.vehicle) {
       this.scene.remove(this.vehicle.group);
       this.vehicle.dispose();
@@ -549,7 +554,7 @@ export class Game {
     this.world.prime(PLAYER_SPAWN.x, PLAYER_SPAWN.z);
     this.player.setAccessories({ hat: 'none', glasses: false });
     this.spawnVehicle(starter, STARTER_CAR.x, STARTER_CAR.z, STARTER_CAR.heading);
-    this.player.place(PLAYER_SPAWN.x, PLAYER_SPAWN.z, 0);
+    this.player.place(PLAYER_SPAWN.x, PLAYER_SPAWN.z, HOME_HEADING);
     this.beginPlay();
     getGame().notify('Xush kelibsiz, G‘uzorga! Otangizdan qolgan «Sarbon S3» ko‘chada turibdi.', 'info');
     window.setTimeout(() => getGame().notify('Pul topish uchun Mehnat birjasiga boring yoki telefonda (Tab) ish tanlang.', 'info'), 4500);
@@ -636,34 +641,76 @@ export class Game {
   }
 
   // ------------------------------------------------------------------ vehicle enter/exit
-  private entering: { v: Vehicle; t: number; fx: number; fz: number; tx: number; tz: number; heading: number } | null = null;
+  private entering: { v: Vehicle; t: number; dur: number; phase: 'walk' | 'door' | 'in'; fx: number; fz: number; tx: number; tz: number; heading: number } | null = null;
+  /** short scripted animation on foot (stand up after leaving a car, opening a building door) */
+  private scripted: { t: number; dur: number; done: () => void } | null = null;
+  private npcAvatars: THREE.Object3D[] = [];
 
-  /** short approach to the driver door before getting in (procedural; no entry clip available yet) */
+  /** driver (+1, left-hand drive) or front passenger (-1) seat in the vehicle's local frame */
+  private seatOf(v: Vehicle, side: 1 | -1) {
+    const d = v.spec.dims;
+    const doorZ = d.length / 2 - v.spec.shape.hood - 1.0;
+    return new THREE.Vector3(side * d.width * 0.21, Math.max(0.04, (d.height - 1.45) * 0.5 + 0.04), doorZ - 0.38);
+  }
+
+  /** walk to the driver door, open it, duck in (Rocketbox door / crouch clips), then drive */
   private beginEnter(v: Vehicle | null = this.vehicle) {
-    if (!v || this.entering) return;
+    if (!v || this.entering || this.scripted) return;
     const h = v.physics.heading;
     const lx = Math.cos(h), lz = -Math.sin(h);
     const doorZ = v.spec.dims.length / 2 - v.spec.shape.hood - 1.0;
-    const tx = v.physics.x + lx * (v.spec.dims.width / 2 + 0.45) + Math.sin(h) * doorZ;
-    const tz = v.physics.z + lz * (v.spec.dims.width / 2 + 0.45) + Math.cos(h) * doorZ;
-    this.entering = { v, t: 0, fx: this.player.x, fz: this.player.z, tx, tz, heading: h - Math.PI / 2 };
+    const tx = v.physics.x + lx * (v.spec.dims.width / 2 + 0.5) + Math.sin(h) * doorZ;
+    const tz = v.physics.z + lz * (v.spec.dims.width / 2 + 0.5) + Math.cos(h) * doorZ;
+    const dist = Math.hypot(tx - this.player.x, tz - this.player.z);
+    this.entering = { v, t: 0, dur: clamp(dist / 1.6, 0.25, 1.5), phase: 'walk', fx: this.player.x, fz: this.player.z, tx, tz, heading: h - Math.PI / 2 };
   }
 
   private updateEntering(dt: number) {
     const e = this.entering!;
-    e.t = Math.min(1, e.t + dt / 0.45);
-    const k = e.t * e.t * (3 - 2 * e.t);
-    this.player.x = e.fx + (e.tx - e.fx) * k;
-    this.player.z = e.fz + (e.tz - e.fz) * k;
-    this.player.heading += (e.heading - this.player.heading) * Math.min(1, dt * 12);
-    this.player.speed = e.t < 0.85 ? 1.6 : 0;
-    this.player.animateOnly(dt);
-    this.player.sync();
-    if (e.t >= 1) {
-      const target = e.v;
-      this.entering = null;
-      this.enterVehicle(target);
+    const p = this.player;
+    e.t += dt;
+    const k = Math.min(1, e.t / e.dur);
+    if (e.phase === 'walk') {
+      const s = k * k * (3 - 2 * k);
+      p.x = e.fx + (e.tx - e.fx) * s;
+      p.z = e.fz + (e.tz - e.fz) * s;
+      const dir = Math.atan2(e.tx - e.fx, e.tz - e.fz);
+      p.heading = dampAngle(p.heading, k < 0.65 && Math.hypot(e.tx - e.fx, e.tz - e.fz) > 0.4 ? dir : e.heading, 12, dt);
+      p.speed = k < 0.9 ? 1.6 : 0;
+      if (k >= 1) {
+        p.speed = 0;
+        if (!p.hasAvatar) return this.finishEnter();
+        e.phase = 'door';
+        e.t = 0;
+        e.dur = 0.9;
+        p.playAction('door_out', { start: 1.0, timeScale: 1.6, fade: 0.15 });
+      }
+    } else if (e.phase === 'door') {
+      p.heading = dampAngle(p.heading, e.heading, 10, dt);
+      if (k >= 1) {
+        e.v.seatRoot.updateWorldMatrix(true, false);
+        const seat = this.seatOf(e.v, 1).applyMatrix4(e.v.seatRoot.matrixWorld);
+        e.phase = 'in';
+        e.t = 0;
+        e.dur = 0.6;
+        e.fx = p.x; e.fz = p.z; e.tx = seat.x; e.tz = seat.z;
+        p.playAction('crouch_in', { start: 0.9, timeScale: 2.1, fade: 0.12 });
+      }
+    } else {
+      const s = k * k * 0.65;
+      p.x = e.fx + (e.tx - e.fx) * s;
+      p.z = e.fz + (e.tz - e.fz) * s;
+      p.heading = dampAngle(p.heading, e.v.physics.heading, 5, dt);
+      if (k >= 1) return this.finishEnter();
     }
+    p.animateOnly(dt);
+    p.sync();
+  }
+
+  private finishEnter() {
+    const v = this.entering!.v;
+    this.entering = null;
+    this.enterVehicle(v);
   }
 
   private enterVehicle(v: Vehicle | null = this.vehicle) {
@@ -671,32 +718,90 @@ export class Game {
     if (v.physics.health <= 0) getGame().notify('Mashina buzilgan — avtoservisga chaqiring yoki ta’mirlang', 'bad');
     this.inVehicle = true;
     this.drivingV = v;
-    this.player.group.visible = false;
+    this.player.speed = 0;
+    if (this.player.hasAvatar) this.player.playAction('sit', { loop: true, start: Math.random() * 6, fade: 0.2 });
+    else this.player.group.visible = false;
     this.rig.setMode('car');
     this.rig.yaw = v.physics.heading;
+  }
+
+  /** Joshqin stays visible in the driver seat (hidden in the cockpit camera) */
+  private updateSeated(dt: number) {
+    const v = this.dv!, p = this.player;
+    if (!p.hasAvatar) return;
+    if (p.group.parent !== v.seatRoot) v.seatRoot.add(p.group);
+    p.group.position.copy(this.seatOf(v, 1));
+    p.group.rotation.set(0, 0, 0);
+    p.group.visible = !this.interiorCam;
+    p.animateOnly(dt);
+  }
+
+  private tickScripted(dt: number) {
+    const sc = this.scripted!;
+    sc.t += dt;
+    this.player.speed = 0;
+    this.player.animateOnly(dt);
+    this.player.sync();
+    if (sc.t >= sc.dur) {
+      this.scripted = null;
+      sc.done();
+    }
   }
 
   private exitVehicle(force = false) {
     const v = this.vehicle;
     if (!v) return;
-    if (!force && v.physics.speedKmh > 8) {
+    const dv = this.drivingV ?? v;
+    if (!force && dv.physics.speedKmh > 8) {
       getGame().notify('Avval to‘xtang', 'bad');
       return;
     }
-    const h = v.physics.heading;
+    const h = dv.physics.heading;
     const lx = Math.cos(h), lz = -Math.sin(h);
-    const off = v.spec.dims.width / 2 + 0.7;
-    let px = v.physics.x + lx * off, pz = v.physics.z + lz * off;
-    if (this.world.col.raycast(v.physics.x, v.physics.z, lx, lz, off + 0.3) < off + 0.3) {
-      px = v.physics.x - lx * off;
-      pz = v.physics.z - lz * off;
+    const off = dv.spec.dims.width / 2 + 0.7;
+    let px = dv.physics.x + lx * off, pz = dv.physics.z + lz * off;
+    if (this.world.col.raycast(dv.physics.x, dv.physics.z, lx, lz, off + 0.3) < off + 0.3) {
+      px = dv.physics.x - lx * off;
+      pz = dv.physics.z - lz * off;
     }
     this.inVehicle = false;
     this.drivingV = null;
     this.setInterior(false);
+    this.scene.add(this.player.group);
     this.player.place(px, pz, h + Math.PI / 2);
     this.player.group.visible = true;
     this.rig.setMode('foot');
+    if (!force && this.player.hasAvatar) {
+      // stand up out of the seat, then hand control back
+      this.player.playAction('crouch_out', { start: 2.3, timeScale: 2.2, fade: 0.08 });
+      this.scripted = { t: 0, dur: 0.7, done: () => this.player.clearAction(0.25) };
+    } else this.player.clearAction(0.01);
+  }
+
+  private async loadNPCs() {
+    for (const [i, url] of NPC_AVATARS.entries()) {
+      const g = await this.assets.loadGLTF(`char.npc.${i}`, url);
+      if (!g) continue;
+      const sc = g.scene;
+      sc.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(sc);
+      sc.position.y = -box.min.y;
+      sc.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.isMesh) { m.castShadow = true; m.frustumCulled = false; tuneAvatarMaterials(m); }
+      });
+      const root = new THREE.Group();
+      root.add(sc);
+      this.npcAvatars.push(root);
+    }
+  }
+
+  /** a random NPC body with the shared Rocketbox clips (falls back to the player model) */
+  private npcSource(): AvatarSource | null {
+    const src = this.player.avatarSource;
+    if (!src) return null;
+    if (!this.npcAvatars.length) return src;
+    return { scene: this.npcAvatars[Math.floor(Math.random() * this.npcAvatars.length)], clips: src.clips, scale: 1 };
   }
 
   private setInterior(on: boolean) {
@@ -970,6 +1075,14 @@ export class Game {
 
   // ------------------------------------------------------------ interiors
   enterInterior(kind: InteriorKind) {
+    if (this.scripted || this.interior) return;
+    if (!this.player.hasAvatar) return this.enterInteriorNow(kind);
+    this.player.speed = 0;
+    this.player.playAction('door_in', { start: 1.0, timeScale: 1.7, fade: 0.15 });
+    this.scripted = { t: 0, dur: 0.85, done: () => { this.player.clearAction(0.2); this.enterInteriorNow(kind); } };
+  }
+
+  private enterInteriorNow(kind: InteriorKind) {
     if (this.inVehicle || this.interior) return;
     const it = this.interiors.list[kind];
     const ret = { x: this.player.x, z: this.player.z, h: this.player.heading + Math.PI };
@@ -1200,7 +1313,7 @@ export class Game {
 
     if (!paused) {
       this.advanceTime(dt);
-      if (this.inVehicle && this.dv) this.updateDriving(dt, inp);
+      if (this.inVehicle && this.dv) { this.updateDriving(dt, inp); if (this.inVehicle && this.dv) this.updateSeated(dt); }
       else if (this.entering) this.updateEntering(dt);
       else this.updateOnFoot(dt, inp);
     }
@@ -1276,7 +1389,8 @@ export class Game {
       if (this.minigame) return;
     }
     if (this.energy < 15) inp.sprint = false;
-    this.player.update(dt, inp, this.rig.yaw, this.world.col);
+    if (this.scripted) this.tickScripted(dt);
+    else this.player.update(dt, inp, this.rig.yaw, this.world.col);
     // keep out of traffic cars
     for (const o of this.traffic.obstacles) {
       const dx = this.player.x - o.x, dz = this.player.z - o.z;
@@ -1434,7 +1548,8 @@ export class Game {
     NAV.update(dt, { x: fx, z: fz }, this.inVehicle && this.dv ? this.dv.physics.speedKmh : 5);
     // ---- taxi passenger: stands at the kerb, walks to the car, rides, gets out
     const pickStep = curStep?.giveItem === 'yolovchi', dropStep = curStep?.takeItem === 'yolovchi';
-    if (pickStep && !this.customer && this.player.avatarSource && curStep) {
+    const npcSrc = pickStep && !this.customer && curStep ? this.npcSource() : null;
+    if (npcSrc && curStep) {
       const r = NETW.nearestRoad(curStep.pos.x, curStep.pos.z, 30);
       let p = curStep.pos, face = 0;
       if (r) {
@@ -1444,7 +1559,7 @@ export class Game {
         p = { x: r.px + nx * (r.e.width / 2 + 1.6), z: r.pz + nz * (r.e.width / 2 + 1.6) };
         face = Math.atan2(-nx, -nz);
       }
-      this.customer = new Customer(this.player.avatarSource, p, face);
+      this.customer = new Customer(npcSrc, p, face);
       this.scene.add(this.customer.group);
     }
     if (this.customer) {
@@ -1454,7 +1569,10 @@ export class Game {
         if (car) this.customer.lookAt(car);
         if (dropStep) this.customer.board(door);
         else if (!pickStep) { this.customer.dispose(); this.customer = null; }
+      } else if (this.customer.state === 'ride' && dropStep && this.dv && this.inVehicle) {
+        this.customer.seat(this.dv.seatRoot, this.seatOf(this.dv, -1));
       } else if (this.customer.state === 'ride' && !dropStep) {
+        this.scene.add(this.customer.group);
         const away = { x: door.x - Math.cos(car?.heading ?? 0) * 6, z: door.z + Math.sin(car?.heading ?? 0) * 6 };
         this.customer.alight(door, away);
       }

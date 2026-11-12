@@ -310,8 +310,33 @@ export function garageSpawnNear(p: Vec2) {
   return kerbPoint(r.e, s, side);
 }
 
+/** courtyard house layout shared by the house builder and the home parking spot (local lot frame, metres) */
+export const HOUSE_WALL_Z = 4.7;
+export const HOUSE_GATE_W = 3.6;
+export const HOME_HOUSE_DEPTH = 11;
+/** gate opening (local x of its left edge) of a house lot: deterministic, so street trees and kerb parking can keep it clear */
+export function houseGateX(id: number, w: number, home: boolean) {
+  if (home) return w / 2 - HOUSE_GATE_W / 2;
+  const h = Math.sin(id * 12.9898 + 78.233) * 43758.5453;
+  return 1.5 + (h - Math.floor(h)) * Math.max(0.1, w - HOUSE_GATE_W - 3);
+}
+export function houseYard(depth: number, hd: number) {
+  const front = depth - 0.4 - hd;
+  const az = front - 1.4;
+  const padLen = Math.max(0, Math.min(6.2, az - 2.4 - HOUSE_WALL_Z - 0.2));
+  return { front, az, padLen, padZ0: HOUSE_WALL_Z + 0.2, padZ1: HOUSE_WALL_Z + 0.2 + padLen };
+}
+/** player's rented home: car parks inside the courtyard, nose to the open gate */
+export const HOME_HEADING = HOME_LOT.rot;
+export const HOME_GATE = frameToWorld(HOME_LOT.ox, HOME_LOT.oz, HOME_LOT.rot, HOME_LOT.w / 2, HOUSE_WALL_Z);
+export const HOME_PARKING = (() => {
+  const y = houseYard(HOME_LOT.d - 0.3, HOME_HOUSE_DEPTH);
+  if (y.padLen < 4.6) return garageSpawnNear(lotFront(HOME_LOT));
+  const p = frameToWorld(HOME_LOT.ox, HOME_LOT.oz, HOME_LOT.rot, HOME_LOT.w / 2, (y.padZ0 + y.padZ1) / 2 + 0.2);
+  return { x: p.x, z: p.z, heading: HOME_LOT.rot + Math.PI };
+})();
 export const PLAYER_SPAWN = poiOf('home').pos;
-export const STARTER_CAR = garageSpawnNear(PLAYER_SPAWN);
+export const STARTER_CAR = HOME_PARKING;
 export const DEALERSHIP_SPAWN = garageSpawnNear(poiOf('dealership').pos);
 
 /** Road graph used by traffic */

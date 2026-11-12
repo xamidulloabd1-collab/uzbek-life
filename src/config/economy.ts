@@ -1,7 +1,7 @@
 /** Every price in the game lives here — never hard-code money in components. */
 export const ECONOMY = {
   /** starting from almost nothing: ≈ $75 in cash, empty bank account */
-  startCash: 950_000,
+  startCash: 1_000_000_000,
   startBank: 0,
   /** starter car handed down in the family */
   starterVehicle: 'lola',

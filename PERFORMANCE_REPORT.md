@@ -40,3 +40,13 @@ Barcha o‘lchovlar shu ish muhitida, **dasturiy GPU (SwiftShader, headless Chro
 - daraxtlar 300 m dan keyin ko‘rinmaydi.
 
 **Sizning kompyuteringizdagi o‘lchov:** o‘zgarishlardan oldin skrinshotingizda 20 FPS edi. Yangi versiyada FPS’ni o‘lchab ko‘ring — taxmin qilib yozmayman.
+
+## 0.24 — o‘lchov (headless SwiftShader, 1280×720, O‘rta preset; noutbukingizda EMAS)
+| Joy | Draw call | Uchburchak | O‘yin hisoblagichi |
+|---|---|---|---|
+| Uy darvozasi oldida, yangi o‘yin | 522–529 | 1 161 596 – 1 169 422 | — |
+| Hovlida, mashinadan tushgandan keyin | 555–577 | 989 544 – 1 011 374 | 22–24 FPS* |
+
+\* Bu raqam dasturiy GPU’dagi o‘yin hisoblagichi, i7-1165G7 + MX350 uchun natija emas. FPS’ni o‘z kompyuteringizda o‘lchang.
+
+Joshqin modeli 6 732 uchburchak, NPC’lar 6–7 ming. Bu bosqichda alohida optimizatsiya qilinmadi. Hovlilarga qo‘shilgan detallar chunk geometriyasiga birlashadi, ya’ni yangi draw call qo‘shmaydi.

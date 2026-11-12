@@ -165,6 +165,11 @@ export class Vehicle {
     this.physics.health = o.health;
   }
 
+  /** node that follows the car (position + yaw): seats for the driver and passengers are expressed in its frame */
+  get seatRoot(): THREE.Object3D {
+    return this.model.root;
+  }
+
   place(x: number, z: number, heading: number) {
     this.physics.place(x, z, heading);
     this.physics.y = groundHeight(x, z);

@@ -170,3 +170,40 @@ Tekshiruv: tizim test GLB fayllari bilan oxirigacha sinaldi (pastga qarang). Ula
 
 # 0.22
 - **Unumdorlik:** to‘xtab turgan mashinalar mintaqalar bo‘yicha yashiriladi; daraxtlar va o‘t kamaytirildi; O‘rta va Past presetlar yengillashtirildi. Bir kadrdagi uchburchaklar −72 %.
+
+# 0.24 — Joshqin (realistik personaj), hovli uylar, hovlidagi parkovka
+
+- **Joshqin:** Mixamo «Michelle» o‘rniga Microsoft Rocketbox «Male_Adult_10» modeli (MIT litsenziya; qizil sport kurtka, 6 732 uchburchak).
+  - 25 ta animatsiya Blender 5.0’da shu skeletga retarget qilindi:
+    - harakat: turish, yurish, yugurish, sprint;
+    - eshik: ochish va kirish;
+    - mashina: cho‘kkalash, o‘tirish;
+    - NPC uchun: qo‘l silkitish, kutish, telefon, sumka, suhbat.
+  - Fayl 7,2 MB → 2,1 MB (meshopt).
+- **Animatsiya tizimi (`Player.ts`):**
+  - turish, yurish, yugurish va sprint tezlikka qarab aralashadi, qadamlar fazasi bir-biriga moslanadi;
+  - turganda vaqti-vaqti bilan atrofga qaraydi;
+  - bosh kiyimi va ko‘zoynak Biped skeletiga moslandi.
+- **Mashinaga o‘tirish:** eshik oldiga yuradi, eshikni ochadi, cho‘kkalab kiradi.
+  - Haydash paytida Joshqin rul o‘rindig‘ida ko‘rinadi (salon kamerasida yashiriladi).
+  - Mashinadan tushganda o‘rnidan turish animatsiyasi bor.
+- **Binoga kirish:** ichkariga o‘tishdan oldin eshikni ochish animatsiyasi.
+- **Taksi yo‘lovchilari:** 7 ta Rocketbox NPC modeli (4 erkak, 3 ayol).
+  - Yo‘lovchi kutadi, taksi 30 m ga yaqinlashganda qo‘l silkitadi, eshik oldiga yurib cho‘kkalab kiradi.
+  - Oldingi yo‘lovchi o‘rindig‘ida o‘tirib ketadi, manzilda turib, piyoda ketadi.
+- **Hovli uylar (`buildings.ts → houseLot`):**
+  - ko‘cha devori: beton sokol, suvoq va g‘isht karniz;
+  - g‘isht ustunlar oq qalpoqli, temir bezakli ustki qism, tunuka soyabon;
+  - darvoza ikki tabaqali, yopiqlarida kalitka (eshikcha) va dastasi bor; taxminan 30 % darvoza hovliga qarab ochiq;
+  - darvoza oldida ariq ustidan beton maydoncha, hovlida tosh terilgan yo‘lak va parkovka maydoni;
+  - temir ustunli tunuka shiypon;
+  - bog‘ darvozaning keng tomonida: mevali daraxt, ishkom, so‘ri, poliz, tandir;
+  - uy sokol ustida, ayvon supa ustida, ustunlar qalpoqli, pillapoya bor.
+- **Darvozalar oldi bo‘sh:** darvoza joyi endi deterministik (`houseGateX`). Uning oldidagi ko‘cha daraxtlari, chiroqlar va yo‘l chetidagi mashinalar olib tashlanadi, mashina bilan kirib chiqish mumkin.
+- **Uyingiz:** darvoza markazda va ochiq. Yangi o‘yinda mashina hovlidagi shiypon ostida, burni darvozaga qarab turadi. Joshqin darvoza oldida, hovliga qarab paydo bo‘ladi.
+- **Boshlang‘ich balans:** yangi o‘yin 1 000 000 000 so‘m bilan boshlanadi (`config/economy.ts`).
+- **Olib tashlandi:** `civilian-michelle.glb`, `mixamo-locomotion.glb` (Mixamo).
+- **Asboblar:**
+  - `tools/blender/rocketbox_to_glb.py` — FBX → GLB, retarget va bake;
+  - `tools/gltf/optimize-avatar.mjs` — meshopt;
+  - `tools/avatar-test/` — poza varag‘i, dev rejimida.

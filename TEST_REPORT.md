@@ -223,3 +223,22 @@ Sinov: tip tekshiruvi va ikkala build xatosiz. Konsolda xato chiqmadi. Barcha si
 - **Uchburchaklar:** 4,50 mln → 1,25 mln (−72 %), bir xil ko‘rinishda (PERFORMANCE_REPORT.md).
 - **Regressiya sinovi o‘tdi:** 10 ta material, transport, taksi mijozi «wait», GPS «O‘ngga buriling · 28 m», konsolda xato yo‘q.
 - **Real modellar** (mashina, odam, bino): hali ham to‘xtab turibdi (VEHICLE_INVENTORY.md, NETWORK_ACCESS.md).
+
+# 0.24 test natijalari (headless Chromium, SwiftShader dasturiy GPU, 1280×720, O‘rta preset)
+- `npm install`, `tsc --noEmit`, `npm run build`: xatosiz. `validate-roads.mjs` ishladi, yo‘llar o‘zgartirilmagan (`plotsOnRoad: 3` avvaldan bor).
+- Menyu 17–21 s da chiqdi. Barcha assetlar yuklandi: `char.player` va 7 ta `char.npc.*`.
+- Konsolda JS xatosi yo‘q. Faqat bitta tarmoq xabari bor (`ERR_NAME_NOT_RESOLVED` — test muhitida tashqi hostga chiqib bo‘lmaydi).
+- **Tekshirildi (skrinshotlar `docs/screenshots/`):**
+  - yangi o‘yin;
+  - balans 1 mlrd so‘m;
+  - ochiq darvoza oldida paydo bo‘lish va hovlidagi mashina;
+  - mashinaga o‘tirish ketma-ketligi: yurish → eshik → cho‘kkalash → o‘rindiq;
+  - o‘rindiqda o‘tirgan Joshqin;
+  - mashinadan tushib turish;
+  - uy interyeriga kirish (eshik animatsiyasidan keyin);
+  - NPC modeli va umumiy kliplar.
+- **Tekshirilmadi:**
+  - to‘liq taksi missiyasi davomida yo‘lovchining o‘tirishi va tushishi (komponent alohida tekshirilgan);
+  - haydash fizikasi (kod o‘zgarmagan);
+  - telefon/touch boshqaruvi;
+  - saqlash/yuklash (yangi maydon qo‘shilmagan).

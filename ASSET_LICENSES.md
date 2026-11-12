@@ -18,3 +18,11 @@ Litsenziyasi tasdiqlanmagan asset buildga kiritilmaydi. `scripts/scan-vehicles.m
 | OpenStreetMap ma’lumotlari (bitta joy koordinatasi; importer orqali kelajakdagi ko‘chalar) | ODbL 1.0 | ruxsat | ruxsat (umumiy ma’lumotlar bazasi share-alike) | «© OpenStreetMap contributors» shart | ishlatilmoqda / importer tayyor |
 | @pmndrs/assets: sunrise/sunset/night HDRI, bulut teksturasi | CC0 1.0 | ruxsat | ruxsat | shart emas | ishlatilmoqda (0.15) |
 | ambientCG: 10 ta PBR material (1K) | CC0 1.0 | ruxsat | ruxsat | shart emas | **ishlatilmoqda (ko‘p faylli build)** |
+
+## Personajlar (0.24)
+| Fayl | Manba | Litsenziya |
+|---|---|---|
+| `src/assets/characters/joshqin.glb` | Microsoft Rocketbox Avatar Library — `Male_Adult_10` + 25 animatsiya (`Assets/Animations`) | MIT, © 2020 Microsoft |
+| `src/assets/characters/npc/*.glb` | Rocketbox `Male_Adult_02/07/14/20`, `Female_Adult_01/05/09` | MIT, © 2020 Microsoft |
+
+Manba: https://github.com/microsoft/Microsoft-Rocketbox (LICENSE.md — MIT). Modellar Blender 5.0’da qayta ishlandi: teksturalar 1024/512 px, specular → roughness, animatsiyalar retarget va bake qilindi, meshopt bilan siqildi. Mixamo fayllari loyihadan olib tashlandi.

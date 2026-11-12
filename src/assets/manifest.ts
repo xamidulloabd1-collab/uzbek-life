@@ -1,5 +1,4 @@
-import civilianUrl from './characters/civilian-michelle.glb?url';
-import locomotionUrl from './characters/mixamo-locomotion.glb?url';
+import joshqinUrl from './characters/joshqin.glb?url';
 import overpassHdr from './environment/pedestrian_overpass_1k.hdr?url';
 
 /**
@@ -28,18 +27,11 @@ export const ASSETS: Record<string, AssetEntry> = {
     status: 'final',
   },
   'char.player': {
-    url: civilianUrl,
+    url: joshqinUrl,
     type: 'gltf',
-    license: 'Adobe Mixamo — royalty-free in projects, not redistributable as a standalone asset',
-    source: 'Mixamo civilian character "Michelle" (casual clothing), via three.js examples (unmodified file)',
-    status: 'temporary',
-  },
-  'anim.locomotion': {
-    url: locomotionUrl,
-    type: 'gltf',
-    license: 'Adobe Mixamo — royalty-free in projects, not redistributable as a standalone asset',
-    source: 'Mixamo Idle / Walk / Run clips (skeleton only, meshes stripped), retargeted by bone name',
-    status: 'temporary',
+    license: 'MIT (Microsoft Rocketbox Avatar Library, © 2020 Microsoft)',
+    source: 'Rocketbox "Male_Adult_10" + 25 Rocketbox animations, retargeted and baked in Blender 5.0, textures 1024 px, meshopt-compressed (tools/blender/rocketbox_to_glb.py)',
+    status: 'final',
   },
 };
 
@@ -50,3 +42,7 @@ export const ASSETS: Record<string, AssetEntry> = {
  * Empty: no licensed vehicle model has been added yet — the procedural models are used and labelled as unfinished.
  */
 export const VEHICLE_MODELS: Record<string, { url: string; license: string } | undefined> = {};
+
+/** Rocketbox (MIT) NPC avatars, mesh only — clips are shared from the player GLB (same Biped skeleton) */
+const npcGlob = import.meta.glob('./characters/npc/*.glb', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
+export const NPC_AVATARS: string[] = Object.keys(npcGlob).sort().map((k) => npcGlob[k]);

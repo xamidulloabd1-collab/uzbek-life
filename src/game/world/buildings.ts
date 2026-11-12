@@ -3,7 +3,7 @@ import type { Side } from '@/types';
 import type { GeoBuilder } from './builder';
 import type { CollisionWorld } from '@/game/physics/collision';
 import type { TextureLib } from './textures';
-import { BLOCK, type Rect, propertyAt, specialAt, districtOf, RIVER, RIVER_ROW } from './cityLayout';
+import { BLOCK, type Rect, propertyAt, specialAt, districtOf, RIVER, RIVER_ROW, HOUSE_WALL_Z, HOUSE_GATE_W, HOME_HOUSE_DEPTH, houseYard } from './cityLayout';
 import { VEHICLES, TRAFFIC_COLORS } from '@/config/vehicles';
 import { lowGeometry } from '@/game/vehicles/vehicleModel';
 import { pick, rand, randInt, type RNG } from '@/utils/math';
@@ -446,34 +446,61 @@ function school(ctx: BlockCtx) {
 }
 
 // ---------------------------------------------------------------- mahalla
-function houseLot(ctx: BlockCtx, lx0: number, w: number, depth: number, closeRight: boolean, big = false) {
+function houseLot(ctx: BlockCtx, lx0: number, w: number, depth: number, closeRight: boolean, big = false, home = false, gateX?: number) {
   const gy = ctx.gy;
   const rng = ctx.rng;
   const wallKey = pick(rng, ['plaster', 'plaster2', 'plaster3', 'plaster4', 'plaster']);
-  const wallZ = 4.7;
-  const gateW = 3.4;
-  const gx = lx0 + rand(rng, 1.2, Math.max(1.3, w - gateW - 1.2));
-  // street wall with gate
-  const segL = gx - lx0;
-  const segR = lx0 + w - (gx + gateW);
-  if (segL > 0.1) {
-    ctx.b.box(wallKey, lx0 + segL / 2, gy, wallZ, segL, 2.5, 0.3, [4, 2.5]);
-    col(ctx, lx0 + segL / 2, wallZ, segL, 0.3, 2.5);
+  const wallZ = HOUSE_WALL_Z;
+  const gateW = HOUSE_GATE_W;
+  // gate opening: the rented home has a centred, open gate with the parking pad right behind it
+  const gx = gateX !== undefined ? lx0 + gateX : home ? lx0 + w / 2 - gateW / 2 : lx0 + rand(rng, 1.5, Math.max(1.6, w - gateW - 1.5));
+  const gc = gx + gateW / 2;
+  const open = home || rng() < 0.3;
+  // ---- street wall: concrete plinth (sokol), plastered wall, brick coping
+  const wallSeg = (x0: number, x1: number) => {
+    const len = x1 - x0;
+    if (len < 0.1) return;
+    const cx = (x0 + x1) / 2;
+    ctx.b.box('concrete', cx, gy, wallZ, len, 0.5, 0.38);
+    ctx.b.box(wallKey, cx, gy + 0.5, wallZ, len, 2.05, 0.3, [4, 2]);
+    ctx.d.box('brick', cx, gy + 2.55, wallZ, len, 0.12, 0.42);
+    col(ctx, cx, wallZ, len, 0.38, 2.6);
+  };
+  wallSeg(lx0, gx - 0.64);
+  wallSeg(gx + gateW + 0.64, lx0 + w);
+  // ---- brick gate pillars with white caps, ornamental header and a tin canopy
+  for (const px of [gx - 0.32, gx + gateW + 0.32]) {
+    ctx.d.box('brick', px, gy, wallZ, 0.64, 3.0, 0.64);
+    ctx.d.box('chalk', px, gy + 3.0, wallZ, 0.8, 0.16, 0.8);
+    ctx.d.box('darkmetal', px, gy + 3.16, wallZ, 0.16, 0.24, 0.16);
+    col(ctx, px, wallZ, 0.64, 0.64, 3);
   }
-  if (segR > 0.1) {
-    ctx.b.box(wallKey, gx + gateW + segR / 2, gy, wallZ, segR, 2.5, 0.3, [4, 2.5]);
-    col(ctx, gx + gateW + segR / 2, wallZ, segR, 0.3, 2.5);
-  }
-  const gateKey = pick(rng, ['gate-blue', 'gate-green', 'gate-blue', 'gate-brown']);
-  col(ctx, gx + gateW / 2, wallZ, gateW, 0.3, 2.4);
-  ctx.slots.gates.push(slot(ctx, gx + gateW / 2, wallZ, gateW + 1, 0.8));
+  ctx.slots.gates.push(slot(ctx, gc, wallZ, gateW + 1, 0.8));
   if (!ctx.opts.skipGates) {
-    ctx.b.box(gateKey, gx + gateW / 2, gy, wallZ, gateW, 2.35, 0.1);
-    ctx.d.box('brick', gx - 0.25, gy, wallZ, 0.5, 2.9, 0.5);
-    ctx.d.box('brick', gx + gateW + 0.25, gy, wallZ, 0.5, 2.9, 0.5);
-    ctx.d.box('tin-green', gx + gateW / 2, gy + 2.9, wallZ - 0.2, gateW + 1.4, 0.12, 1.2);
-  }
-  // side + back walls
+    const gateKey = pick(rng, ['gate-blue', 'gate-green', 'gate-blue', 'gate-brown']);
+    ctx.d.box('darkmetal', gc, gy + 2.6, wallZ, gateW, 0.08, 0.08);
+    ctx.d.box('darkmetal', gc, gy + 2.96, wallZ, gateW, 0.06, 0.06);
+    for (let k = 1; k < 8; k++) ctx.d.box('darkmetal', gx + (k * gateW) / 8, gy + 2.62, wallZ, 0.035, 0.36, 0.035);
+    ctx.d.box(pick(rng, ['tin-green', 'tin-red', 'tin-green', 'tin-grey']), gc, gy + 3.28, wallZ - 0.1, gateW + 1.7, 0.08, 1.6);
+    const lw = gateW / 2 - 0.03, lh = 2.5;
+    if (open) {
+      // both leaves swung inward, flat against the opening
+      for (const hx of [gx + 0.07, gx + gateW - 0.07]) {
+        ctx.b.box(gateKey, hx, gy + 0.06, wallZ + 0.2 + lw / 2, lw, lh, 0.07, null, Math.PI / 2);
+        col(ctx, hx, wallZ + 0.2 + lw / 2, 0.12, lw, lh);
+      }
+    } else {
+      for (const lx of [gx + 0.02 + lw / 2, gx + gateW - 0.02 - lw / 2]) ctx.b.box(gateKey, lx, gy + 0.06, wallZ, lw, lh, 0.07);
+      // wicket door (kalitka) in the left leaf: frame and handle
+      const wx = gx + 0.45;
+      ctx.d.box('darkmetal', wx, gy + 0.1, wallZ - 0.05, 0.04, 1.95, 0.02);
+      ctx.d.box('darkmetal', wx + 0.84, gy + 0.1, wallZ - 0.05, 0.04, 1.95, 0.02);
+      ctx.d.box('darkmetal', wx + 0.42, gy + 2.05, wallZ - 0.05, 0.88, 0.04, 0.02);
+      ctx.d.box('metal', wx + 0.72, gy + 1.0, wallZ - 0.08, 0.035, 0.16, 0.05);
+      col(ctx, gc, wallZ, gateW, 0.3, 2.5);
+    }
+  } else col(ctx, gc, wallZ, gateW, 0.3, 2.4);
+  // ---- side + back walls
   ctx.b.box(wallKey, lx0, gy, (wallZ + depth) / 2, 0.3, 2.4, depth - wallZ, [4, 2.4]);
   col(ctx, lx0, (wallZ + depth) / 2, 0.3, depth - wallZ, 2.4);
   if (closeRight) {
@@ -481,24 +508,78 @@ function houseLot(ctx: BlockCtx, lx0: number, w: number, depth: number, closeRig
     col(ctx, lx0 + w, (wallZ + depth) / 2, 0.3, depth - wallZ, 2.4);
   }
   ctx.b.box(wallKey, lx0 + w / 2, gy, depth, w, 2.4, 0.3, [4, 2.4]);
-  // house at the back of the courtyard
-  const hd = big ? 11 : rand(rng, 8, 10);
+  col(ctx, lx0 + w / 2, depth, w, 0.3, 2.4);
+  // ---- house at the back of the courtyard
+  const hd = big ? HOME_HOUSE_DEPTH : rand(rng, 8, 10);
+  const yard = houseYard(depth, hd);
   const hw = w - 1.6;
+  const hcx = lx0 + w / 2;
   const floors = big ? 2 : rng() < 0.35 ? 2 : 1;
   const hh = floors * 3.3;
   const hz = depth - 0.4 - hd / 2;
-  const kind = big || rng() < 0.4 ? 'brick' : 'house';
-  ctx.slots.houses.push(slot(ctx, lx0 + w / 2, hz, hw, hd));
-  col(ctx, lx0 + w / 2, hz, hw, hd, hh);
+  const az = yard.az;
+  // concrete apron over the street aryk, paved drive and parking pad inside the yard
+  ctx.b.quad('concrete', gx - 0.5, 0.15, gx + gateW + 0.5, wallZ - 0.2, gy + 0.03, 'world', 3);
+  const pad = yard.padLen >= 4.6;
+  const padZ1 = pad ? yard.padZ1 : wallZ + 1.6;
+  ctx.b.quad('pavers', gx - 0.3, wallZ + 0.2, gx + gateW + 0.3, padZ1, gy + 0.03, 'world', 4);
+  // path from the drive to the ayvon steps (door is in the middle of the house)
+  if (az - 1.15 > padZ1) {
+    ctx.b.quad('pavers', Math.min(gc, hcx) - 0.7, padZ1, Math.max(gc, hcx) + 0.7, padZ1 + 1.4, gy + 0.03, 'world', 4);
+    ctx.b.quad('pavers', hcx - 0.7, padZ1 + 1.4, hcx + 0.7, Math.max(padZ1 + 1.4, az - 1.05), gy + 0.03, 'world', 4);
+  }
+  // carport (shiypon) over the parking pad: steel posts and a corrugated roof
+  if (pad && (home || w >= 11.5) && (home || rng() < 0.8)) {
+    const roof = pick(rng, ['corr-grey', 'tin-green', 'corr-blue', 'tin-red']);
+    const z0 = wallZ + 0.6, z1 = padZ1 + 0.2;
+    for (const px of [gx - 0.12, gx + gateW + 0.12]) {
+      for (const pz of [wallZ + 2.3, padZ1 - 0.15]) {
+        ctx.d.box('darkmetal', px, gy, pz, 0.1, 2.72, 0.1);
+        col(ctx, px, pz, 0.14, 0.14, 2.7);
+      }
+      ctx.d.box('darkmetal', px, gy + 2.62, (z0 + z1) / 2, 0.08, 0.1, z1 - z0);
+    }
+    for (let z = z0 + 0.4; z < z1; z += 1.2) ctx.d.box('darkmetal', gc, gy + 2.72, z, gateW + 0.5, 0.06, 0.06);
+    ctx.d.box(roof, gc, gy + 2.78, (z0 + z1) / 2, gateW + 0.9, 0.05, z1 - z0 + 0.3);
+  }
+  ctx.slots.houses.push(slot(ctx, hcx, hz, hw, hd));
+  col(ctx, hcx, hz, hw, hd, hh);
+  // garden on the wider side of the gate: fruit trees, grape trellis (ishkom), tapchan, tandir, vegetable beds
+  const leftW = gx - 0.7 - (lx0 + 0.7), rightW = lx0 + w - 0.7 - (gx + gateW + 0.7);
+  const [g0, g1] = rightW >= leftW ? [gx + gateW + 0.9, lx0 + w - 0.7] : [lx0 + 0.7, gx - 0.9];
+  const gz0 = wallZ + 0.9, gz1 = az - 1.4;
   if (ctx.opts.skipHouses) {
-    tree(ctx, lx0 + rand(rng, 2, w - 2), rand(rng, wallZ + 2.5, hz - hd / 2 - 3), 'fruit');
+    if (g1 - g0 > 1.2 && gz1 > gz0) tree(ctx, (g0 + g1) / 2, (gz0 + gz1) / 2, 'fruit');
     return;
   }
-  ctx.b.box(`fac-${kind}plain${kind === 'house' ? pick(rng, ['', '-b', '-c']) : ''}`, lx0 + w / 2, gy, hz, hw, hh, hd, ctx.tex.plainWall(kind).tile, 0, rng());
-  ctx.b.box('chalk', lx0 + w / 2, gy + hh - 0.25, hz, hw + 0.16, 0.25, hd + 0.16);
+  if (g1 - g0 > 1.4 && gz1 - gz0 > 2) {
+    const gm = (g0 + g1) / 2;
+    tree(ctx, rand(rng, g0 + 0.6, Math.max(g0 + 0.7, g1 - 0.6)), rand(rng, gz0 + 0.8, Math.max(gz0 + 0.9, gz1 - 0.6)), 'fruit');
+    if (g1 - g0 > 3.4 && rng() < 0.6) {
+      const tw = Math.min(4.6, g1 - g0 - 0.4), tz = Math.min(gz1 - 2.4, gz0 + 2.6);
+      for (const sx of [-tw / 2, tw / 2]) for (const sz of [-2, 2]) ctx.d.cyl('metal', gm + sx, gy, tz + sz, 0.05, 0.05, 2.6, 6);
+      ctx.d.box('foliage', gm, gy + 2.6, tz, tw + 0.3, 0.25, 4.6);
+      ctx.d.box('wood', gm, gy, tz, Math.min(2.6, tw - 0.4), 0.5, 2.0);
+      ctx.d.box('red', gm, gy + 0.5, tz, Math.min(2.4, tw - 0.6), 0.06, 1.8);
+    } else if (rng() < 0.6) {
+      // vegetable beds
+      for (let z = gz0 + 0.5; z < gz1 - 0.8; z += 1.3) ctx.d.box('foliage', gm, gy, z, Math.max(0.8, g1 - g0 - 1.2), 0.28, 0.7);
+    }
+    if (rng() < 0.4) {
+      const tx = g1 - 0.7, tz = gz1 - 0.4;
+      ctx.d.cyl('wall-earth', tx, gy, tz, 0.42, 0.55, 0.95, 10);
+      ctx.d.cyl('chalk', tx, gy + 0.95, tz, 0.3, 0.42, 0.12, 10);
+      col(ctx, tx, tz, 1, 1, 1);
+    }
+  } else tree(ctx, lx0 + rand(rng, 2, w - 2), Math.max(wallZ + 2, az - 2.2), 'fruit');
+  // ---- the house: plinth, walls, windows, roof
+  ctx.b.box('concrete', hcx, gy, hz, hw + 0.12, 0.6, hd + 0.12);
+  const kind = big || rng() < 0.4 ? 'brick' : 'house';
+  ctx.b.box(`fac-${kind}plain${kind === 'house' ? pick(rng, ['', '-b', '-c']) : ''}`, hcx, gy + 0.6, hz, hw, hh - 0.6, hd, ctx.tex.plainWall(kind).tile, 0, rng());
+  ctx.b.box('chalk', hcx, gy + hh - 0.25, hz, hw + 0.16, 0.25, hd + 0.16);
   {
     const style: FrameStyle = rng() < 0.6 ? 'blue' : 'wood';
-    const faces = boxFaces(ctx, lx0 + w / 2, hz, hw, hd, gy);
+    const faces = boxFaces(ctx, hcx, hz, hw, hd, gy);
     const bays = Math.max(1, Math.floor(hw / 2.7));
     const mid = Math.floor(bays / 2);
     addWindowGrid(ctx.facade, faces.nz, { bay: 2.7, floorH: 3.3, floors, winW: 1.3, winH: 1.5, sill: 0.95, style, lit: 0.45, skip: (k, f) => f === 0 && k === mid }, rng);
@@ -507,26 +588,24 @@ function houseLot(ctx: BlockCtx, lx0: number, w: number, depth: number, closeRig
   }
   if (rng() < 0.75) {
     const tin = pick(rng, ['tin-green', 'tin-red', 'tin-grey', 'tin-green']);
-    ctx.b.box(tin, lx0 + w / 2, gy + hh, hz, hw + 0.6, 0.15, hd + 0.6);
-    ctx.b.prism(tin, lx0 + w / 2, gy + hh + 0.15, hz, hw + 0.6, rand(rng, 1, 1.6), hd + 0.6);
+    ctx.b.box(tin, hcx, gy + hh, hz, hw + 0.6, 0.15, hd + 0.6);
+    ctx.b.prism(tin, hcx, gy + hh + 0.15, hz, hw + 0.6, rand(rng, 1, 1.6), hd + 0.6);
   } else {
-    ctx.b.box('roof', lx0 + w / 2, gy + hh, hz, hw + 0.3, 0.4, hd + 0.3, [4, 4]);
+    ctx.b.box('roof', hcx, gy + hh, hz, hw + 0.3, 0.4, hd + 0.3, [4, 4]);
   }
-  // ayvon (veranda) with carved wooden columns
-  const az = hz - hd / 2 - 1.4;
-  for (let x = lx0 + 1.4; x < lx0 + w - 1; x += 2.6) ctx.d.cyl('wood', x, gy, az, 0.13, 0.15, 3, 8);
-  ctx.d.box('wood', lx0 + w / 2, gy + 3, az + 0.6, hw, 0.18, 3.2);
-  // courtyard: fruit tree, grape trellis or tapchan
-  tree(ctx, lx0 + rand(rng, 2, w - 2), rand(rng, wallZ + 2.5, az - 2), 'fruit');
-  if (rng() < 0.45) {
-    const tx = lx0 + w / 2;
-    for (const [x, z] of [[-2, -2], [2, -2], [-2, 2], [2, 2]]) ctx.d.cyl('metal', tx + x, gy, wallZ + 5 + z, 0.05, 0.05, 2.6, 6);
-    ctx.d.box('foliage', tx, gy + 2.6, wallZ + 5, 4.8, 0.25, 4.8);
-  } else if (rng() < 0.5) {
-    ctx.d.box('wood', lx0 + w / 2, gy, wallZ + 4, 2.6, 0.5, 2.2);
-    ctx.d.box('red', lx0 + w / 2, gy + 0.5, wallZ + 4, 2.4, 0.06, 2);
+  // ---- ayvon: raised supa platform, carved wooden columns with capitals, painted beam, steps
+  const deckZ0 = az - 0.9, deckZ1 = hz - hd / 2 + 0.05;
+  ctx.d.box('concrete', hcx, gy, (deckZ0 + deckZ1) / 2, hw, 0.32, deckZ1 - deckZ0);
+  ctx.d.box('concrete', hcx, gy, deckZ0 - 0.3, 1.6, 0.16, 0.6);
+  for (let x = lx0 + 1.4; x < lx0 + w - 1; x += 2.6) {
+    ctx.d.cyl('wood', x, gy + 0.32, az, 0.11, 0.14, 2.62, 8);
+    ctx.d.box('wood', x, gy + 2.82, az, 0.34, 0.14, 0.34);
+    ctx.d.box('wood', x, gy + 0.32, az, 0.3, 0.16, 0.3);
   }
-  if (rng() < 0.3) ctx.d.cyl('white', lx0 + w / 2 + 2, gy + hh + 0.6, hz, 0.45, 0.45, 0.08, 12);
+  ctx.d.box('wood', hcx, gy + 2.96, az, hw, 0.16, 0.2);
+  ctx.d.box('awning-blue', hcx, gy + 2.96, az - 0.11, hw, 0.12, 0.02);
+  ctx.d.box('wood', hcx, gy + 3.12, (az + deckZ1) / 2, hw, 0.1, deckZ1 - az + 0.6);
+  if (rng() < 0.3) ctx.d.cyl('white', hcx + 2, gy + hh + 0.6, hz, 0.45, 0.45, 0.08, 12);
 }
 
 function mahalla(ctx: BlockCtx) {
@@ -1205,13 +1284,13 @@ export function buildSite(ctx: BlockCtx, kind: string, name: string, sub = '') {
 }
 
 /** one street lot in its own frame: local x along the street, local z into the lot */
-export function buildLot(ctx: BlockCtx, kind: string, w: number, d: number, big: boolean, center: boolean) {
+export function buildLot(ctx: BlockCtx, kind: string, w: number, d: number, big: boolean, center: boolean, home = false, gateX?: number) {
   setFrame(ctx, sideFrame(ctx.r, 'n'));
   const gy = ctx.gy, rng = ctx.rng;
   const ground = kind === 'industrial' ? 'concrete' : kind === 'commercial' || kind === 'apartment' ? 'pavers' : kind === 'villa' || kind === 'orchard' ? 'grass' : 'steppe';
   ctx.b.box('curb', w / 2, gy - 4, d / 2, w, 3.99, d);
   ctx.b.quad(ground, 0, 0, w, d, gy + 0.004, 'world', 8);
-  if (kind === 'house') houseLot(ctx, 0, w, d - 0.3, true, big);
+  if (kind === 'house') houseLot(ctx, 0, w, d - 0.3, true, big, home, gateX);
   else if (kind === 'villa') villaLot(ctx, 0, w);
   else if (kind === 'commercial') {
     const floors = center ? randInt(rng, 2, 4) : randInt(rng, 1, 2);

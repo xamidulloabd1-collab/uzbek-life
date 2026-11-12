@@ -40,3 +40,5 @@ Litsenziya: CC0 1.0. Manba: https://ambientcg.com. Yuklangan sana: 2026-11-12. O
 | kafel | Tiles139 |
 
 Fayllar `public/assets/materials/` papkasida. Ular ko‘p faylli buildda ishlaydi (`npm run dev`, Netlify, Vercel).
+
+- Joshqin va NPC personajlar: Microsoft Rocketbox Avatar Library (MIT, © 2020 Microsoft).
