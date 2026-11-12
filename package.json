@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "UZBEK LIFE: OPEN WORLD \u2014 browser 3D life simulator (desktop + mobile)",
+  "description": "UZBEK LIFE: OPEN WORLD — browser 3D life simulator (desktop + mobile)",
   "scripts": {
     "dev": "vite --host",
     "typecheck": "tsc --noEmit",
@@ -13,7 +13,8 @@
     "vehicles:scan": "node scripts/scan-vehicles.mjs",
     "predev": "node scripts/scan-vehicles.mjs",
     "prebuild": "node scripts/scan-vehicles.mjs",
-    "assets:fetch": "node scripts/fetch-assets.mjs"
+    "assets:fetch": "node scripts/fetch-assets.mjs",
+    "vehicles:fetch": "node scripts/fetch-sketchfab.mjs"
   },
   "dependencies": {
     "react": "18.3.1",
@@ -27,6 +28,7 @@
     "@types/three": "0.170.0",
     "@vitejs/plugin-react": "4.3.3",
     "fflate": "^0.8.2",
+    "geotiff": "^2.1.3",
     "typescript": "5.6.3",
     "vite": "5.4.11",
     "vite-plugin-singlefile": "2.0.3"

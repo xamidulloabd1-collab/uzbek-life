@@ -29,3 +29,16 @@ Kompyuteringizda internet cheklanmagan:
 npm run assets:fetch
 ```
 Bu buyruq ambientCG’dan 10 ta CC0 PBR materialni `public/assets/materials/` ga yuklaydi. O‘yin ularni avtomatik ishlatadi (ko‘p faylli build: `npm run dev`, Netlify yoki Vercel).
+
+
+## 0.19 qayta tekshiruv (2026-11-12)
+
+| Host | Natija |
+|---|---|
+| `acg-download.struffelproductions.com` | **ochiq** — 10 ta material yuklandi |
+| `api.polyhaven.com` | ochiq (Poly Haven’da mashina modeli yo‘q) |
+| `dl.polyhaven.org` | bosh sahifa 521, fayllar sinalmadi |
+| `api.sketchfab.com` | qidiruv va model ma’lumotlari ochiq; `/download` 401 — token kerak |
+| `www.turbosquid.com` | 403 (bot himoyasi); yuklash uchun login ham kerak |
+| `www.blenderkit.com` | API qidiruvi ochiq; yuklash uchun API kaliti va Blender kerak |
+| `kenney.nl` | 403 |

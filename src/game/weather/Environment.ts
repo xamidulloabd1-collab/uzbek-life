@@ -181,12 +181,14 @@ export class Environment {
     this.wet = clamp(this.wet + (this.rainAmt > 0.3 ? dt * 0.05 : -dt * 0.012), 0, 1);
 
     // sun path: rises in the east (+x), culminates in the south (+z)
-    const ang = ((minutes / 1440) - 0.25) * Math.PI * 2;
+    // Qashqadaryo-like long day: sunrise ≈ 05:40, sunset ≈ 19:20, a slower twilight
+    const hh = minutes / 60, DAWN = 5.67, DUSK = 19.33;
+    const ang = hh >= DAWN && hh <= DUSK ? ((hh - DAWN) / (DUSK - DAWN)) * Math.PI : Math.PI + ((((hh - DUSK) % 24) + 24) % 24 / (24 - (DUSK - DAWN))) * Math.PI;
     const sunDir = new THREE.Vector3(Math.cos(ang), Math.sin(ang) * 0.92, 0.38).normalize();
     const e = sunDir.y;
     const day = smoothstep(-0.08, 0.25, e);
     const dusk = smoothstep(0.35, 0.02, e) * smoothstep(-0.18, 0.02, e);
-    const night = 1 - smoothstep(-0.14, 0.06, e);
+    const night = 1 - smoothstep(-0.26, 0.05, e);
     const grey = this.cloud * 0.85;
 
     const top = SKY.nightTop.clone().lerp(SKY.dayTop, day).lerp(SKY.duskTop, dusk * 0.6).lerp(SKY.greyTop.clone().multiplyScalar(0.15 + 0.85 * day), grey);
@@ -204,7 +206,8 @@ export class Environment {
     const fog = this.scene.fog as THREE.Fog;
     fog.color.copy(hor).multiplyScalar(0.92);
     // rain pulls the haze in
-    fog.far = Math.max(70, this.fogFar * (1 - this.rainAmt * 0.5) * (1 - this.fogAmt * 0.75));
+    // low sun → a little more atmospheric haze (morning / evening)
+    fog.far = Math.max(70, this.fogFar * (1 - this.rainAmt * 0.5) * (1 - this.fogAmt * 0.75) * (0.78 + 0.22 * smoothstep(0.05, 0.45, e)));
     fog.near = Math.max(2, fog.far * (0.3 - this.rainAmt * 0.22 - this.fogAmt * 0.25));
     fog.color.lerp(SKY.greyHorizon.clone().multiplyScalar(0.25 + 0.75 * day), this.fogAmt * 0.7);
 

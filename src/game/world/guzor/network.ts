@@ -1,6 +1,7 @@
 import type { Side, Vec2 } from '@/types';
 import { mulberry32, type RNG } from '@/utils/math';
 import OSM from './osm.json';
+import DEM from '../gis/dem.json';
 
 /** optional OpenStreetMap import (scripts/import-osm.mjs); ODbL © OpenStreetMap contributors */
 interface OsmData { source?: string; roads: { cls: RoadClass; name: string; pts: [number, number][] }[]; river?: [number, number][] }
@@ -128,7 +129,22 @@ function distToPolyline(x: number, z: number, pts: Vec2[]) {
 
 // ------------------------------------------------------------------ terrain
 /** smooth terrain: gentle undulation in town, foothills rising to the north and east */
+/** real elevation (Copernicus GLO-30 via scripts/gis/fetch-dem.mjs) when present; game is 1:2 horizontally and vertically */
+interface DemData { heights: number[]; nx?: number; nz?: number; stepM?: number; bbox?: { s: number; w: number; n: number; e: number }; origin?: { lat: number; lon: number }; refElevation?: number }
+const DEM_DATA = DEM as unknown as DemData;
+export const HAS_DEM = DEM_DATA.heights.length > 0;
+function demAt(x: number, z: number) {
+  const d = DEM_DATA, M_LAT = 111320, M_LON = 111320 * Math.cos((d.origin!.lat * Math.PI) / 180);
+  const lon = d.origin!.lon + (x * 2) / M_LON, lat = d.origin!.lat - (z * 2) / M_LAT;
+  const fi = ((lon - d.bbox!.w) * M_LON) / d.stepM!, fj = ((d.bbox!.n - lat) * M_LAT) / d.stepM!;
+  const i = Math.max(0, Math.min(d.nx! - 2, Math.floor(fi))), j = Math.max(0, Math.min(d.nz! - 2, Math.floor(fj)));
+  const tx = Math.min(1, Math.max(0, fi - i)), tz = Math.min(1, Math.max(0, fj - j)), H = d.heights, n = d.nx!;
+  const h = H[j * n + i] * (1 - tx) * (1 - tz) + H[j * n + i + 1] * tx * (1 - tz) + H[(j + 1) * n + i] * (1 - tx) * tz + H[(j + 1) * n + i + 1] * tx * tz;
+  return (h - (d.refElevation ?? 0)) * 0.5;
+}
+
 export function baseH(x: number, z: number) {
+  if (HAS_DEM) return demAt(x, z);
   let h = 1.3 * Math.sin(x * 0.0041 + 0.7) * Math.cos(z * 0.0033 - 0.4) + 0.65 * Math.sin((x * 0.7 + z) * 0.0072 + 1.3) + 0.3 * Math.sin(x * 0.013 - z * 0.011);
   h += 24 * sstep(1250, 2100, x) * (0.65 + 0.35 * Math.sin(z * 0.0045 + 0.6));
   h += 14 * sstep(-650, -1050, z) * (0.6 + 0.4 * Math.sin(x * 0.004));
@@ -179,7 +195,9 @@ class Network {
   lots: Lot[] = [];
   parked: { x: number; z: number; rot: number; edge: number }[] = [];
   trees: { x: number; z: number; type: 'chinor' | 'terak' | 'fruit' | 'pine' | 'bush' | 'grass'; s: number }[] = [];
-  lamps: { x: number; z: number; rot: number; tall?: boolean }[] = [];
+  lamps: { x: number; z: number; rot: number; tall?: boolean; pole?: boolean }[] = [];
+  /** overhead power/phone lines between mahalla utility poles: [x0, z0, x1, z1] */
+  wires: [number, number, number, number][] = [];
   furniture: { x: number; z: number; rot: number; kind: 'bench' | 'bin' }[] = [];
   private eGrid = new Map<string, number[]>(); // cell → edge ids
   private lGrid = new Map<string, number[]>(); // cell → lot ids
@@ -193,13 +211,14 @@ class Network {
     this.indexEdges();
     this.dropParallelDuplicates();
     this.placeSites();
+    this.dropIslands();
     this.markJunctions();
     this.placeLots(rng);
     this.placeProps(rng);
     this.placeInfill(rng);
     this.stats.ms = Math.round(performance.now() - t0);
   }
-  stats = { ms: 0, dupesRemoved: 0 };
+  stats = { ms: 0, dupesRemoved: 0, islandsRemoved: 0 };
 
   // ------------------------------------------------ graph
   private buildGraph(rng: RNG) {
@@ -593,6 +612,31 @@ class Network {
     this.indexEdges();
   }
 
+  /** remove small road pieces that ended up disconnected from the main network (e.g. lanes whose street was removed) */
+  private dropIslands() {
+    const comp = new Map<number, number>();
+    const sizes: number[] = [];
+    for (const n of this.nodes) {
+      if (!n.edges.length || comp.has(n.id)) continue;
+      const id = sizes.length, stack = [n.id];
+      let size = 0;
+      comp.set(n.id, id);
+      while (stack.length) {
+        const u = stack.pop()!;
+        size++;
+        for (const eid of this.nodes[u].edges) {
+          const e = this.edges[eid], v = e.a === u ? e.b : e.a;
+          if (!comp.has(v)) { comp.set(v, id); stack.push(v); }
+        }
+      }
+      sizes.push(size);
+    }
+    const main = sizes.indexOf(Math.max(...sizes));
+    const dead = new Set(this.edges.filter((e) => comp.get(e.a) !== main).map((e) => e.id));
+    if (dead.size) this.removeEdges(dead);
+    this.stats.islandsRemoved = dead.size;
+  }
+
   /** remove generated streets that run alongside a main road (they looked like doubled, overlapping roads) */
   private dropParallelDuplicates() {
     const dead = new Set<number>();
@@ -617,7 +661,7 @@ class Network {
     for (const n of this.nodes) {
       const majors = n.edges.filter((id) => this.edges[id].cls === 'main' || this.edges[id].cls === 'highway').length;
       const z = zoneAt(n.x, n.z);
-      n.light = n.edges.length >= 3 && majors >= 2 && (z === 'center' || z === 'mahalla');
+      n.light = (majors >= 3 && (z === 'center' || z === 'mahalla')) || (z === 'center' && n.edges.length >= 4 && majors >= 2);
       n.roundabout = Math.hypot(n.x - rb.x, n.z - rb.z) < 12;
       if (n.roundabout) n.light = false;
     }
@@ -668,6 +712,7 @@ class Network {
             corners.every((c) => c.x > BOUNDS.x0 + 20 && c.x < BOUNDS.x1 - 20 && c.z > BOUNDS.z0 + 20 && c.z < BOUNDS.z1 - 20) &&
             corners.every((c) => riverDist(c.x, c.z) > 18 && Math.abs(c.z - RAIL_Z) > 16 && Math.hypot(c.x - STATION.x, c.z - STATION.z) > 75) &&
             corners.slice(0, 8).every((c) => !this.onRoad(c.x, c.z, 1.2)) &&
+            [[0.25, 0.25], [0.75, 0.25], [0.25, 0.75], [0.75, 0.75], [0.5, 0.5]].every(([a, b]) => { const p = frameToWorld(ox, oz, rot, w * a, d * b); return !this.onRoad(p.x, p.z, 0.6); }) &&
             !this.overlaps(corners);
           if (ok) {
             this.addLot({ kind, ox, oz, rot, w, d, zone, cls: e.cls, seed: Math.floor(rng() * 1e9), edge: e.id }, corners);
@@ -689,17 +734,15 @@ class Network {
         if (zone === 'fields' || zone === 'industrial') continue;
         if (this.lotAt(px, pz) || this.onRoad(px, pz, 2.5) || riverDist(px, pz) < 14 || Math.abs(pz - RAIL_Z) < 18) continue;
         const r = rng();
+        // performance pass (0.22): about half the garden trees, no infill grass clumps (the ground colour carries the green)
         if (zone === 'mahalla') {
-          if (r < 0.42) this.trees.push({ x: px, z: pz, type: rng() < 0.7 ? 'fruit' : 'terak', s: 0.8 + rng() * 0.35 });
-          else if (r < 0.62) this.trees.push({ x: px, z: pz, type: 'bush', s: 0.9 + rng() * 0.5 });
-          else if (r < 0.85) this.trees.push({ x: px, z: pz, type: 'grass', s: 1 + rng() * 0.6 });
+          if (r < 0.22) this.trees.push({ x: px, z: pz, type: rng() < 0.7 ? 'fruit' : 'terak', s: 0.85 + rng() * 0.35 });
+          else if (r < 0.32) this.trees.push({ x: px, z: pz, type: 'bush', s: 0.9 + rng() * 0.5 });
         } else if (zone === 'center' || zone === 'villas') {
-          if (r < 0.25) this.trees.push({ x: px, z: pz, type: rng() < 0.6 ? 'chinor' : 'pine', s: 0.85 + rng() * 0.3 });
-          else if (r < 0.5) this.trees.push({ x: px, z: pz, type: 'bush', s: 1 + rng() * 0.4 });
-          else this.trees.push({ x: px, z: pz, type: 'grass', s: 1.2 + rng() * 0.6 });
+          if (r < 0.15) this.trees.push({ x: px, z: pz, type: rng() < 0.6 ? 'chinor' : 'pine', s: 0.85 + rng() * 0.3 });
+          else if (r < 0.3) this.trees.push({ x: px, z: pz, type: 'bush', s: 1 + rng() * 0.4 });
         } else if (zone === 'village') {
-          if (r < 0.32) this.trees.push({ x: px, z: pz, type: rng() < 0.75 ? 'fruit' : 'terak', s: 0.8 + rng() * 0.3 });
-          else if (r < 0.5) this.trees.push({ x: px, z: pz, type: 'grass', s: 1.2 + rng() * 0.6 });
+          if (r < 0.18) this.trees.push({ x: px, z: pz, type: rng() < 0.75 ? 'fruit' : 'terak', s: 0.8 + rng() * 0.3 });
         }
       }
   }
@@ -721,7 +764,19 @@ class Network {
           else if ((e.zone === 'mahalla' || e.zone === 'village') && rng() < 0.55) this.trees.push({ x, z, type: rng() < 0.75 ? 'terak' : 'chinor', s: 0.85 + rng() * 0.3 });
         }
       }
-      if (town || e.cls === 'highway') {
+      if ((e.zone === 'mahalla' || e.zone === 'village' || e.zone === 'villas') && (e.cls === 'street' || e.cls === 'rural')) {
+        const side = e.id % 2 ? 1 : -1;
+        let prev: { x: number; z: number } | null = null;
+        for (let s = 10; s < e.len - 6; s += 30) {
+          const p = this.pointAt(e, s);
+          const nx = -p.tz * side, nz = p.tx * side, off = e.width / 2 + 0.9;
+          const x = p.x + nx * off, z = p.z + nz * off;
+          if (this.lotAt(x, z) || riverDist(x, z) < 10) { prev = null; continue; }
+          this.lamps.push({ x, z, rot: Math.atan2(-nx, -nz), pole: true });
+          if (prev) this.wires.push([prev.x, prev.z, x, z]);
+          prev = { x, z };
+        }
+      } else if (town || e.cls === 'highway') {
         const ls = e.cls === 'highway' ? 46 : e.zone === 'center' ? 26 : 34;
         for (let s = 12; s < e.len - 8; s += ls) {
           const p = this.pointAt(e, s);

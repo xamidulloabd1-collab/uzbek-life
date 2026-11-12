@@ -193,6 +193,7 @@ export class World {
     for (const t of trees) this.regionOf(t.x, t.z).trees.push(t);
     for (const l of lamps) this.regionOf(l.x, l.z).lamps.push(l);
     this.buildSigns(signs);
+    this.buildWires();
     this.buildTrafficLights();
     this.buildPOIRings();
     const before = this.group.children.length;
@@ -333,16 +334,28 @@ export class World {
   }
 
   private buildParked() {
+    // grouped by 240 m region and model so distant parked cars are culled with their region (performance pass 0.22)
     const bySpec = new Map<string, ParkedInst[]>();
     for (const p of this.parkedSrc) {
-      if (!bySpec.has(p.specId)) bySpec.set(p.specId, []);
-      bySpec.get(p.specId)!.push(p);
+      const key = `${p.specId}|${Math.floor(p.x / 240)},${Math.floor(p.z / 240)}`;
+      if (!bySpec.has(key)) bySpec.set(key, []);
+      bySpec.get(key)!.push(p);
     }
+    const regionGroups = new Map<string, THREE.Group>();
     const bodyMat = new THREE.MeshStandardMaterial({ color: '#ffffff', metalness: 0.55, roughness: 0.3, envMapIntensity: 1.1 });
     const rng = mulberry32(5150);
     const col = new THREE.Color();
-    for (const [specId, list] of bySpec) {
+    for (const [key, list] of bySpec) {
+      const specId = key.split('|')[0], rk = key.split('|')[1];
       const g = lowGeo(VEHICLE_MAP[specId]);
+      let rg = regionGroups.get(rk);
+      if (!rg) {
+        rg = new THREE.Group();
+        regionGroups.set(rk, rg);
+        this.group.add(rg);
+        const [rx, rz] = rk.split(',').map(Number);
+        this.regions.push({ group: rg, x: (rx + 0.5) * 240, z: (rz + 0.5) * 240 });
+      }
       const meshes = [
         new THREE.InstancedMesh(g.body, bodyMat, list.length),
         new THREE.InstancedMesh(g.glass, lowMats.glass, list.length),
@@ -362,7 +375,7 @@ export class World {
         m.castShadow = this.shadows;
         m.receiveShadow = true;
         m.computeBoundingSphere();
-        this.group.add(m);
+        rg!.add(m);
       });
     }
   }
@@ -716,6 +729,24 @@ export class World {
         }
       }
       strip(this.roadKey(e), Lr, Rr, vs, 0, 1);
+      if (e.zone === 'mahalla' && (e.cls === 'street' || e.cls === 'lane') && !e.sidewalk) {
+        // aryk: a narrow water channel with concrete lips on both sides of mahalla streets
+        for (const sd of [1, -1]) {
+          const inner: THREE.Vector3[] = [], outer: THREE.Vector3[] = [], lip: THREE.Vector3[] = [], lipO: THREE.Vector3[] = [];
+          for (let k = 0; k < Lr.length; k++) {
+            const a = Lr[k], b = Rr[k];
+            const cx = (a.x + b.x) / 2, cz = (a.z + b.z) / 2, dx = (sd > 0 ? a.x : b.x) - cx, dz = (sd > 0 ? a.z : b.z) - cz;
+            const l = Math.hypot(dx, dz) || 1, ux = dx / l, uz = dz / l, y = a.y - 0.13;
+            lip.push(new THREE.Vector3(cx + ux * (half + 0.05), a.y + 0.02, cz + uz * (half + 0.05)));
+            inner.push(new THREE.Vector3(cx + ux * (half + 0.2), y, cz + uz * (half + 0.2)));
+            outer.push(new THREE.Vector3(cx + ux * (half + 0.7), y, cz + uz * (half + 0.7)));
+            lipO.push(new THREE.Vector3(cx + ux * (half + 0.85), a.y + 0.02, cz + uz * (half + 0.85)));
+          }
+          const vv = vs.map((v) => v * 6);
+          if (sd > 0) { strip('water', inner, outer, vv, 0, 1); strip('concrete', lip, inner, vv, 0, 0.2); strip('concrete', outer, lipO, vv, 0, 0.2); }
+          else { strip('water', outer, inner, vv, 0, 1); strip('concrete', inner, lip, vv, 0, 0.2); strip('concrete', lipO, outer, vv, 0, 0.2); }
+        }
+      }
       if (e.sidewalk) {
         const sv = vs.map((v) => v * 5);
         strip('pavers', SL, SLo, sv, 0, 1.3);
@@ -875,7 +906,12 @@ export class World {
       new THREE.BoxGeometry(0.08, 0.45, 0.4).translate(0.8, 0.22, 0),
     ])!;
     const bin = new THREE.CylinderGeometry(0.26, 0.22, 0.85, 12).translate(0, 0.425, 0);
-    return { trunkMat, crownMats, geos, greens, pole, arm, head, lampMat, headMat, pool, bench, bin };
+    // concrete utility pole (8.6 m) with a cross-arm for the overhead lines
+    const upole = mergeGeometries([
+      new THREE.CylinderGeometry(0.09, 0.15, 8.6, 8).translate(0, 4.3, 0),
+      new THREE.BoxGeometry(1.1, 0.08, 0.08).translate(0, 8.0, 0),
+    ])!;
+    return { trunkMat, crownMats, geos, greens, pole, arm, head, lampMat, headMat, pool, bench, bin, upole };
   }
 
   /** instanced trees and lamps; global ones go to culling regions, streamed ones into a chunk sink */
@@ -961,6 +997,20 @@ export class World {
       if (lampList.length) {
         const meshes = [new THREE.InstancedMesh(pole, lampMat, lampList.length), new THREE.InstancedMesh(arm, lampMat, lampList.length), new THREE.InstancedMesh(head, headMat, lampList.length)];
         const pools = new THREE.InstancedMesh(pool, this.poolMat, lampList.length);
+        const poles = lampList.filter((l) => l.pole);
+        if (poles.length) {
+          const pm = new THREE.InstancedMesh(kit.upole, this.mats.concrete as THREE.Material, poles.length);
+          poles.forEach((l, n) => {
+            tmpObj.position.set(l.x, groundAt(l.x, l.z), l.z);
+            tmpObj.rotation.set(0, l.rot, 0);
+            tmpObj.scale.setScalar(1);
+            tmpObj.updateMatrix();
+            pm.setMatrixAt(n, tmpObj.matrix);
+          });
+          pm.castShadow = this.shadows;
+          pm.computeBoundingSphere();
+          group.add(pm);
+        }
         lampList.forEach((l, n) => {
           const gy = groundAt(l.x, l.z);
           const s = l.tall ? 1.4 : 1;
@@ -993,6 +1043,29 @@ export class World {
         this.regions.push({ group, x: (rx + 0.5) * 240, z: (rz + 0.5) * 240 });
       }
     }
+  }
+
+  /** sagging overhead lines between utility poles (two conductors) */
+  private buildWires() {
+    const pos: number[] = [];
+    for (const [x0, z0, x1, z1] of NET.wires) {
+      const y0 = groundAt(x0, z0) + 7.95, y1 = groundAt(x1, z1) + 7.95;
+      const L = Math.hypot(x1 - x0, z1 - z0) || 1, ox = (-(z1 - z0) / L) * 0.45, oz = ((x1 - x0) / L) * 0.45;
+      for (const k of [-1, 1]) {
+        let px = x0 + ox * k, py = y0, pz = z0 + oz * k;
+        for (let i = 1; i <= 6; i++) {
+          const t = i / 6, sag = Math.sin(t * Math.PI) * 0.55;
+          const x = x0 + (x1 - x0) * t + ox * k, z = z0 + (z1 - z0) * t + oz * k, y = y0 + (y1 - y0) * t - sag;
+          pos.push(px, py, pz, x, y, z);
+          px = x; py = y; pz = z;
+        }
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    const lines = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: '#1f2226' }));
+    lines.name = 'wires';
+    this.group.add(lines);
   }
 
   private buildSigns(signs: SignInst[]) {
@@ -1480,7 +1553,8 @@ export class World {
         }
       }
       for (const t of this.terrain) t.mesh.visible = Math.hypot(cam.x - t.x, cam.z - t.z) - 120 < TR;
-      for (const r of this.regions) r.group.visible = Math.hypot(cam.x - r.x, cam.z - r.z) - 170 < this.renderDistance;
+      // trees and lamps stop a little before the buildings do (fog hides the edge)
+      for (const r of this.regions) r.group.visible = Math.hypot(cam.x - r.x, cam.z - r.z) - 170 < Math.min(this.renderDistance, 300);
     }
     for (const n of this.nightMats) n.m.emissiveIntensity = night * n.k;
     this.poolMat.opacity = night * 0.55;

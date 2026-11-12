@@ -180,3 +180,46 @@ Sinov: tip tekshiruvi va ikkala build xatosiz. Konsolda xato yo‘q, faqat Googl
 | Realistik mashina va bino modellari | yo‘q | **Blocked** | NETWORK_ACCESS.md |
 
 Sinov: tip tekshiruvi va ikkala build xatosiz. Konsolda xato chiqmadi. Barcha sinovlar dasturiy GPU’da o‘tkazildi.
+
+
+# 0.19 — real aktivlar
+
+| Funksiya | Oldin | Hozir | Dalil |
+|---|---|---|---|
+| ambientCG CC0 PBR materiallari | yuklab bo‘lmasdi | **Completed (ko‘p faylli build)** | 10/10 yuklandi. O‘yinda asfalt, beton, plitka, suvoq, tuproq, maysa, tom, g‘isht, parket va kafelga qo‘llandi (`photoMaterials` 10 ta, asfalt teksturasi 1024 px). Skrinshot: real asfalt va plitka |
+| Bitta HTML (artifact) ichiga 512 px materiallarni qo‘shish | — | **Olib tashlandi** | Dasturiy GPU’da sahifa qulab tushdi. Qaytarilgach, HTML barqaror ishladi |
+| Real mashinalar (Sketchfab) | yo‘q | **Blocked — token kerak** | 15 ta mashina bo‘yicha nomzodlar va litsenziyalar API orqali tekshirildi. 3 tasi qayta yuklangani uchun rad etildi. `/download` → 401 |
+| `vehicles:fetch` (Sketchfab yuklovchi) | yo‘q | **Qisman sinalgan** | Litsenziya va qayta yuklash tekshiruvi ishladi (Damas qabul qilindi, Malibu rad etildi). Yuklash qismi token yo‘qligi sabab sinalmadi |
+| Blender skripti (`tools/blender/prepare_vehicle.py`) | yo‘q | **Sinalmagan** | Bu muhitda Blender yo‘q; sizning kompyuteringizda ishga tushirish kerak |
+
+
+# 0.20 — Milestone 1 (GIS) holati
+
+| Vazifa | Holati | Dalil |
+|---|---|---|
+| Haqiqiy OSM yo‘llari | **Blocked** | Overpass, OSM API va Geofabrik — DNS topilmadi (docs/GEOGRAPHIC_SOURCES.md) |
+| Haqiqiy relyef (DEM) | **Blocked** | Copernicus S3 — DNS topilmadi. Pipeline va o‘yindagi ulanish sintetik GeoTIFF bilan sinaldi (balandliklar o‘qildi, `baseH` qiyalikni qaytardi) |
+| Yo‘llarni tekshirish skripti | **Completed** | `validate-roads.mjs` ishga tushirildi |
+| Uzilgan yo‘l bo‘laklari | **Tuzatildi** | Avval 62 ta bog‘lanish komponenti edi (122 ta tugun asosiy tarmoqdan ajralgan); endi 1 ta |
+| Rejalanmagan berk ko‘chalar / ustma-ust parallel yo‘llar | **0 / 0** | validate-roads |
+| Yo‘lga tegib turgan bino uchastkalari | 11 → **3** (2 537 tadan) | validate-roads |
+| Regressiya | **O‘tdi** | 10 ta material, transport, taksi mijozi «wait», GPS «Chapga buriling · 28 m», konsolda xato yo‘q |
+
+
+# 0.21 — Stage 1–2
+
+| Funksiya | Oldin | Hozir | Dalil |
+|---|---|---|---|
+| Svetoforli chorrahalar | 129 | **44** | network statistikasi; tip tekshiruvi va build xatosiz |
+| Elektr ustunlari va simlar (mahalla, qishloq) | yo‘q | **2 112 ta ustun / 1 166 ta oraliq** | skrinshot: ustun va simlar |
+| Ko‘cha bo‘yi ariqlari | yo‘q | **bor** (mahalla ko‘chalari) | buildda geometriya qo‘shildi |
+| Kun uzunligi va shafaq | botish 18:00, 18:45 da tun | **botish ≈ 19:20**, 18:55 da oltin shafaq | skrinshotlar: 06:40, 18:55, 22:00 |
+| Yo‘l tekshiruvi | — | komponentlar 1, berk ko‘chalar 0, ustma-ust yo‘llar 0 | validate-roads |
+| Konsol xatolari | — | yo‘q | Playwright sinovi |
+| FPS | — | o‘lchanmadi | faqat dasturiy GPU mavjud |
+
+
+# 0.22 — unumdorlik
+- **Uchburchaklar:** 4,50 mln → 1,25 mln (−72 %), bir xil ko‘rinishda (PERFORMANCE_REPORT.md).
+- **Regressiya sinovi o‘tdi:** 10 ta material, transport, taksi mijozi «wait», GPS «O‘ngga buriling · 28 m», konsolda xato yo‘q.
+- **Real modellar** (mashina, odam, bino): hali ham to‘xtab turibdi (VEHICLE_INVENTORY.md, NETWORK_ACCESS.md).

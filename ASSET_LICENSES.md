@@ -17,3 +17,4 @@ Litsenziyasi tasdiqlanmagan asset buildga kiritilmaydi. `scripts/scan-vehicles.m
 
 | OpenStreetMap ma’lumotlari (bitta joy koordinatasi; importer orqali kelajakdagi ko‘chalar) | ODbL 1.0 | ruxsat | ruxsat (umumiy ma’lumotlar bazasi share-alike) | «© OpenStreetMap contributors» shart | ishlatilmoqda / importer tayyor |
 | @pmndrs/assets: sunrise/sunset/night HDRI, bulut teksturasi | CC0 1.0 | ruxsat | ruxsat | shart emas | ishlatilmoqda (0.15) |
+| ambientCG: 10 ta PBR material (1K) | CC0 1.0 | ruxsat | ruxsat | shart emas | **ishlatilmoqda (ko‘p faylli build)** |

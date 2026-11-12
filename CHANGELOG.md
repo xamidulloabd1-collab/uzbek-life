@@ -147,3 +147,26 @@ Tekshiruv: tizim test GLB fayllari bilan oxirigacha sinaldi (pastga qarang). Ula
 - **Chorrahalar:** svetoforlar qayta joylashtirildi; zebra va to‘xtash chiziqlari.
 - **Yo‘llar:** 107 ta takroriy ko‘cha olib tashlandi.
 - **Mashina nomlari:** Sarbon Motors.
+
+
+# 0.19
+- **Materiallar:** 10 ta haqiqiy CC0 PBR material (ambientCG) yuklandi va ko‘p faylli buildda yo‘l, devor, yer, tom va pollarga ulandi.
+- **Mashinalar:** `npm run vehicles:fetch` (Sketchfab, token bilan, litsenziya tekshiruvi) va `tools/blender/prepare_vehicle.py`.
+- **Hujjatlar:** VEHICLE_INVENTORY’da 15 ta mashina bo‘yicha nomzodlar jadvali.
+
+
+# 0.20
+- **GIS pipeline:** `scripts/gis/fetch-osm.mjs` (Overpass), `scripts/gis/fetch-dem.mjs` (Copernicus DEM → heightmap) va `baseH` ulanishi.
+- **Yo‘l tekshiruvi:** `scripts/validation/validate-roads.mjs`. Uzilgan yo‘l bo‘laklari olib tashlandi, uchastka joylashuvi tekshiruvi kuchaytirildi.
+- **Hujjatlar:** docs/GEOGRAPHIC_*, docs/LOCATION_VERIFICATION.md, docs/ROAD_VALIDATION.md.
+
+
+# 0.21
+- **Svetoforlar:** 129 → 44.
+- **Mahalla:** elektr ustunlari va simlar, ariqlar.
+- **Kun sikli:** Qashqadaryo yozidagidek uzun kun, sekin shafaq, ertalab va kechqurun haze.
+- **Hujjat:** docs/VISUAL_AUDIT.md.
+
+
+# 0.22
+- **Unumdorlik:** to‘xtab turgan mashinalar mintaqalar bo‘yicha yashiriladi; daraxtlar va o‘t kamaytirildi; O‘rta va Past presetlar yengillashtirildi. Bir kadrdagi uchburchaklar −72 %.

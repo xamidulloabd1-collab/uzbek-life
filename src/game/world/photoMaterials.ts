@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import type { World } from './World';
 import type { Interiors } from './Interiors';
 
+
+
 /** where each downloaded material goes: world material keys, per-key tint, texture repeats per UV tile */
 const TARGETS: Record<string, { keys: string[]; tint?: Record<string, string>; repeat: number }> = {
   asphalt: { keys: ['asphalt', 'junction'], repeat: 4 },
@@ -18,21 +20,29 @@ const TARGETS: Record<string, { keys: string[]; tint?: Record<string, string>; r
  * written by `npm run assets:fetch`. Without the folder the procedural textures stay in place.
  */
 export async function applyPhotoMaterials(world: World, interiors?: Interiors): Promise<string[]> {
-  if (!/^https?:$/.test(location.protocol)) return [];
+  // 1K CC0 set in public/assets/materials (multi-file build; written by `npm run assets:fetch`)
   const base = `${import.meta.env.BASE_URL}assets/materials/`;
-  let manifest: { materials: Record<string, { id: string; files: Record<string, string> }> };
-  try {
-    const ac = new AbortController();
-    const t = setTimeout(() => ac.abort(), 1500);
-    const r = await fetch(`${base}materials.json`, { cache: 'no-cache', signal: ac.signal });
-    clearTimeout(t);
-    if (!r.ok) return [];
-    manifest = await r.json();
-  } catch {
-    return [];
+  let manifest: { materials: Record<string, { id: string; files: Record<string, string> }> } | null = null;
+  if (/^https?:$/.test(location.protocol)) {
+    try {
+      const ac = new AbortController();
+      const t = setTimeout(() => ac.abort(), 1500);
+      const r = await fetch(`${base}materials.json`, { cache: 'no-cache', signal: ac.signal });
+      clearTimeout(t);
+      if (r.ok) {
+        const j = await r.json();
+        if (Object.keys(j.materials ?? {}).length) manifest = j;
+      }
+    } catch {
+      /* fall back to the bundled set */
+    }
   }
+  if (!manifest) return [];
   const loader = new THREE.TextureLoader();
-  const load = (name: string, file?: string) => (file ? loader.loadAsync(`${base}${name}/${file}`).catch(() => null) : Promise.resolve(null));
+  const load = (name: string, file?: string) => {
+    if (!file) return Promise.resolve(null);
+    return loader.loadAsync(`${base}${name}/${file}`).catch(() => null);
+  };
   const applied: string[] = [];
   for (const [name, m] of Object.entries(manifest.materials ?? {})) {
     const [color, normal, rough] = await Promise.all([load(name, m.files.color), load(name, m.files.normal), load(name, m.files.roughness)]);
@@ -49,13 +59,15 @@ export async function applyPhotoMaterials(world: World, interiors?: Interiors): 
     };
     const tg = TARGETS[name];
     if (tg) {
+      // one texture set per material, shared by all of its keys (keeps GPU memory low)
+      const cm = prep(color, tg.repeat), nm = prep(normal, tg.repeat), rm = prep(rough, tg.repeat);
       for (const key of tg.keys) {
         const mat = world.mats[key] as THREE.MeshStandardMaterial | undefined;
         if (!mat || !mat.isMeshStandardMaterial) continue;
-        mat.map = prep(color, tg.repeat);
-        mat.normalMap = prep(normal, tg.repeat);
-        if (rough) {
-          mat.roughnessMap = prep(rough, tg.repeat);
+        mat.map = cm;
+        mat.normalMap = nm;
+        if (rm) {
+          mat.roughnessMap = rm;
           mat.roughness = 1;
         }
         mat.color.set(tg.tint?.[key] ?? '#ffffff');

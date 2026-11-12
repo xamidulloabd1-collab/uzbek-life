@@ -1,4 +1,98 @@
 {
- "source": "none yet — run: npm run assets:fetch (ambientCG, CC0)",
- "materials": {}
+ "source": "ambientCG (https://ambientcg.com)",
+ "license": "CC0 1.0 Universal",
+ "resolution": "1K",
+ "downloaded": "2026-11-12",
+ "materials": {
+  "asphalt": {
+   "id": "Asphalt031",
+   "page": "https://ambientcg.com/view?id=Asphalt031",
+   "files": {
+    "color": "color.jpg",
+    "normal": "normal.jpg",
+    "roughness": "roughness.jpg"
+   }
+  },
+  "concrete": {
+   "id": "Concrete034",
+   "page": "https://ambientcg.com/view?id=Concrete034",
+   "files": {
+    "color": "color.jpg",
+    "normal": "normal.jpg",
+    "roughness": "roughness.jpg"
+   }
+  },
+  "paving": {
+   "id": "PavingStones138",
+   "page": "https://ambientcg.com/view?id=PavingStones138",
+   "files": {
+    "color": "color.jpg",
+    "normal": "normal.jpg",
+    "roughness": "roughness.jpg"
+   }
+  },
+  "plaster": {
+   "id": "Plaster001",
+   "page": "https://ambientcg.com/view?id=Plaster001",
+   "files": {
+    "color": "color.jpg",
+    "normal": "normal.jpg",
+    "roughness": "roughness.jpg"
+   }
+  },
+  "ground": {
+   "id": "Ground109",
+   "page": "https://ambientcg.com/view?id=Ground109",
+   "files": {
+    "color": "color.jpg",
+    "normal": "normal.jpg",
+    "roughness": "roughness.jpg"
+   }
+  },
+  "grass": {
+   "id": "Grass004",
+   "page": "https://ambientcg.com/view?id=Grass004",
+   "files": {
+    "color": "color.jpg",
+    "normal": "normal.jpg",
+    "roughness": "roughness.jpg"
+   }
+  },
+  "roof": {
+   "id": "CorrugatedSteel005",
+   "page": "https://ambientcg.com/view?id=CorrugatedSteel005",
+   "files": {
+    "color": "color.jpg",
+    "normal": "normal.jpg",
+    "roughness": "roughness.jpg"
+   }
+  },
+  "bricks": {
+   "id": "Bricks105",
+   "page": "https://ambientcg.com/view?id=Bricks105",
+   "files": {
+    "color": "color.jpg",
+    "normal": "normal.jpg",
+    "roughness": "roughness.jpg"
+   }
+  },
+  "woodfloor": {
+   "id": "WoodFloor051",
+   "page": "https://ambientcg.com/view?id=WoodFloor051",
+   "files": {
+    "color": "color.jpg",
+    "normal": "normal.jpg",
+    "roughness": "roughness.jpg"
+   }
+  },
+  "tiles": {
+   "id": "Tiles139",
+   "page": "https://ambientcg.com/view?id=Tiles139",
+   "files": {
+    "color": "color.jpg",
+    "normal": "normal.jpg",
+    "roughness": "roughness.jpg"
+   }
+  }
+ }
 }

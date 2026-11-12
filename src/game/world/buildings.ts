@@ -11,7 +11,7 @@ import { addDoor, addWindowGrid, type Face, type FacadeSet, type FrameStyle } fr
 
 export type TreeType = 'chinor' | 'terak' | 'fruit' | 'pine' | 'bush' | 'grass';
 export interface TreeInst { type: TreeType; x: number; z: number; s: number; key?: string; rot?: number }
-export interface LampInst { x: number; z: number; rot: number; tall?: boolean; key?: string; kind?: 'lamp' | 'bench' | 'bin'; s?: number }
+export interface LampInst { x: number; z: number; rot: number; tall?: boolean; key?: string; kind?: 'lamp' | 'bench' | 'bin'; s?: number; pole?: boolean }
 export interface SignInst { tex: THREE.Texture; x: number; y: number; z: number; w: number; h: number; rot: number }
 
 interface Frame { ox: number; oz: number; rot: number }

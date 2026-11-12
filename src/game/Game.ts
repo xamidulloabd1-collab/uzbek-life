@@ -1374,7 +1374,7 @@ export class Game {
     if (this.envTimer <= 0) {
       this.envTimer = 1;
       const h = this.minutes / 60;
-      const key = h < 5.2 || h > 20.3 ? 'night' : h < 7.6 ? 'sunrise' : h > 17.6 ? 'sunset' : 'day';
+      const key = h < 5.2 || h > 20.4 ? 'night' : h < 7.3 ? 'sunrise' : h > 18.3 ? 'sunset' : 'day';
       const tex = this.envMaps[key] ?? this.envMaps.day;
       if (tex && key !== this.envKey) {
         this.scene.environment = tex;
